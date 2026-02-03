@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('account_reference', 100);
             $table->string('transaction_desc');
             $table->enum('transaction_type', ['subscription', 'order', 'appointment']);
-            $table->unsignedBigInteger('reference_id'); // subscription_id, order_id, appointment_id
+            $table->unsignedBigInteger('reference_id'); 
             $table->enum('status', ['pending', 'success', 'failed', 'cancelled'])->default('pending');
             $table->text('result_desc')->nullable();
             $table->json('callback_data')->nullable();

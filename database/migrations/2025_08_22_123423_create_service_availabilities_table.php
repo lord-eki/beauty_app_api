@@ -15,7 +15,7 @@ return new class extends Migration {
             $table->foreignId('business_profile_id')->constrained()->onDelete('cascade');
             $table->foreignId('business_location_id')->nullable()->constrained()->onDelete('cascade');
             $table->foreignId('staff_id')->nullable()->constrained('service_staff')->onDelete('cascade');
-            $table->tinyInteger('day_of_week'); // 0=Sunday, 1=Monday, etc.
+            $table->tinyInteger('day_of_week'); 
             $table->time('start_time');
             $table->time('end_time');
             $table->boolean('is_available')->default(true);

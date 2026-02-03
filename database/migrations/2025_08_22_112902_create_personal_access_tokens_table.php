@@ -20,8 +20,6 @@ return new class extends Migration {
             $table->timestamp('expires_at')->nullable()->index();
             $table->timestamps();
 
-            $table->index(['tokenable_type', 'tokenable_id']);
-
         });
     }
 
