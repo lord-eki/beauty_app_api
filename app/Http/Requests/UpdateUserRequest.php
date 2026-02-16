@@ -12,7 +12,7 @@ class UpdateUserRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -27,6 +27,8 @@ class UpdateUserRequest extends FormRequest
         return [
             'first_name' => ['sometimes', 'string', 'max:100'],
             'last_name' => ['sometimes', 'string', 'max:100'],
+            'phone' => ['sometimes', 'string', 'max:20'],
+            'user_type' => ['sometimes', 'string', 'in:customer,provider'],
             'email' => [
                 'sometimes',
                 'email',
