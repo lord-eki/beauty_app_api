@@ -3,6 +3,11 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
+use App\Http\Resources\UserResource;
+use App\Http\Resources\BusinessLocationResource;
+use App\Http\Resources\ServiceResource;
+use App\Http\Resources\ProductResource;
+use App\Http\Resources\ReviewResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class BusinessProfileResource extends JsonResource

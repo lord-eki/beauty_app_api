@@ -8,7 +8,7 @@ use App\Http\Resources\BusinessProfileResource;
 use App\Models\BusinessProfile;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
-use Request;
+use Illuminate\Http\Request;
 
 class BusinessProfileController extends Controller
 {
