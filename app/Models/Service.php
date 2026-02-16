@@ -52,4 +52,26 @@ class Service extends Model
     {
         return $this->hasMany(Appointment::class);
     }
+
+     // Scopes
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeHomeService($query)
+    {
+        return $query->where('is_home_service', true);
+    }
+
+    public function scopeByCategory($query, $categoryId)
+    {
+        return $query->where('category_id', $categoryId);
+    }
+
+    public function scopePriceRange($query, $min, $max)
+    {
+        return $query->where('price_min', '>=', $min)
+                    ->where('price_max', '<=', $max);
+    }
 }

@@ -2,16 +2,16 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\HasApiTokens;
 
-class User extends Model
+class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, HasApiTokens;
+    use HasApiTokens, HasFactory, Notifiable;
 
     /**
      * The attributes that are mass assignable.
@@ -19,9 +19,9 @@ class User extends Model
      * @var list<string>
      */
     protected $fillable = [
-        'first_name','last_name','email', 'password','uuid','phone',
-        'profile_image','user_type','is_active','last_active_at',
-        'phone_verified_at'
+        'first_name', 'last_name', 'email', 'password', 'uuid', 'phone',
+        'profile_image', 'user_type', 'is_active', 'last_active_at',
+        'phone_verified_at',
     ];
 
     /**
@@ -47,17 +47,16 @@ class User extends Model
             'phone_verified_at' => 'datetime',
             'last_active_at' => 'datetime',
             'is_active' => 'boolean',
-            
+
         ];
     }
 
     protected static function boot()
     {
         parent::boot();
-        static::creating(function($model){
-            if(empty($model->uuid))
-            {
-                $model->uuid =  Str::uuid();
+        static::creating(function ($model) {
+            if (empty($model->uuid)) {
+                $model->uuid = Str::uuid();
             }
         });
     }
@@ -74,21 +73,52 @@ class User extends Model
 
     public function customerConversations()
     {
-        return $this->hasMany(ChatConversation::class,'customer_id');
+        return $this->hasMany(ChatConversation::class, 'customer_id');
     }
 
     public function providerConversations()
     {
-        return $this->hasMany(ChatConversation::class,'provider_id');
+        return $this->hasMany(ChatConversation::class, 'provider_id');
     }
 
     public function appointments()
     {
-        return $this->hasMany(Appointment::class,'customer_id');
+        return $this->hasMany(Appointment::class, 'customer_id');
     }
 
     public function orders()
     {
-        return $this->hasMany(Order::class,'customer_id');
+        return $this->hasMany(Order::class, 'customer_id');
+    }
+
+    // Helper Methods
+    public function isProvider(): bool
+    {
+        return $this->user_type === 'provider';
+    }
+
+    public function isCustomer(): bool
+    {
+        return $this->user_type === 'customer';
+    }
+
+    public function hasBusinessProfile(): bool
+    {
+        return $this->businessProfile()->exists();
+    }
+
+    public function isActive(): bool
+    {
+        return $this->is_active;
+    }
+
+    public function hasVerifiedEmail(): bool
+    {
+        return ! is_null($this->email_verified_at);
+    }
+
+    public function hasVerifiedPhone(): bool
+    {
+        return ! is_null($this->phone_verified_at);
     }
 }

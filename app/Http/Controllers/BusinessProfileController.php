@@ -90,6 +90,7 @@ class BusinessProfileController extends Controller
     {
         $businessProfile = $request->user()->businessProfile;
 
+
         if (!$businessProfile) {
             return response()->json([
                 'success' => false,

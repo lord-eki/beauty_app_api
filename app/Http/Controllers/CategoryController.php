@@ -5,46 +5,73 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreCategoryRequest;
 use App\Http\Requests\UpdateCategoryRequest;
 use App\Models\Category;
+use App\Http\Resources\CategoryResource;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class CategoryController extends Controller
 {
-    /**
-     * Display a listing of the resource.
+   /**
+     * Get all active categories with hierarchy
      */
-    public function index()
+    public function index(Request $request): JsonResponse
     {
-        //
+        $categories = Category::active()
+            ->parents()
+            ->with('children')
+            ->ordered()
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => CategoryResource::collection($categories),
+        ], 200);
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Get a specific category with its children
      */
-    public function store(StoreCategoryRequest $request)
+    public function show(Category $category): JsonResponse
     {
-        //
+        return response()->json([
+            'success' => true,
+            'data' => new CategoryResource($category->load('children')),
+        ], 200);
     }
 
     /**
-     * Display the specified resource.
+     * Get services in a category
      */
-    public function show(Category $category)
+    public function services(Category $category, Request $request): JsonResponse
     {
-        //
+        $perPage = $request->input('per_page', 15);
+
+        $services = $category->services()
+            ->active()
+            ->with(['businessProfile', 'category'])
+            ->paginate($perPage);
+
+        return response()->json([
+            'success' => true,
+            'data' => $services,
+        ], 200);
     }
 
     /**
-     * Update the specified resource in storage.
+     * Get products in a category
      */
-    public function update(UpdateCategoryRequest $request, Category $category)
+    public function products(Category $category, Request $request): JsonResponse
     {
-        //
-    }
+        $perPage = $request->input('per_page', 15);
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(Category $category)
-    {
-        //
+        $products = $category->products()
+            ->active()
+            ->with(['businessProfile', 'category'])
+            ->paginate($perPage);
+
+        return response()->json([
+            'success' => true,
+            'data' => $products,
+        ], 200);
     }
 }
