@@ -14,8 +14,8 @@ class UserResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-      return [
-        'id' => $this->id,
+        return [
+            'id' => $this->id,
             'uuid' => $this->uuid,
             'email' => $this->email,
             'phone' => $this->phone,
@@ -30,10 +30,15 @@ class UserResource extends JsonResource
             'created_at' => $this->created_at?->toIso8601String(),
             'last_active_at' => $this->last_active_at?->toIso8601String(),
             
-            // Include business profile if user is a provider
             'business_profile' => $this->when(
-                $this->user_type === 'provider' && $this->businessProfile,
-                fn() => new BusinessProfileResource($this->businessProfile))
-      ];
+                $this->relationLoaded('businessProfile') && $this->businessProfile,
+                function() {
+                    if (class_exists(BusinessProfileResource::class)) {
+                        return new BusinessProfileResource($this->businessProfile);
+                    }
+                    return $this->businessProfile;
+                }
+            ),
+        ];
     }
 }
