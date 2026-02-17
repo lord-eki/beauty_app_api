@@ -8,10 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OrderItem extends Model
 {
-    /** @use HasFactory<\Database\Factories\OrderItemFactory> */
     use HasFactory;
-
-    public $timestamps = false;
 
     protected $fillable = [
         'order_id',
@@ -23,12 +20,13 @@ class OrderItem extends Model
     ];
 
     protected $casts = [
+        'quantity' => 'integer',
         'unit_price' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'total_price' => 'decimal:2',
-        'created_at' => 'datetime',
     ];
 
+    // Relationships
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
@@ -37,5 +35,26 @@ class OrderItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    // Helper methods
+    public function calculateTotal(): void
+    {
+        $this->total_price = ($this->unit_price * $this->quantity) - $this->discount_amount;
+        $this->save();
+    }
+
+    // Boot method
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($item) {
+            $item->total_price = ($item->unit_price * $item->quantity) - ($item->discount_amount ?? 0);
+        });
+
+        static::updating(function ($item) {
+            $item->total_price = ($item->unit_price * $item->quantity) - ($item->discount_amount ?? 0);
+        });
     }
 }

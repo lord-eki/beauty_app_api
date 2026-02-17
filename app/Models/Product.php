@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
 {
-    /** @use HasFactory<\Database\Factories\ProductFactory> */
     use HasFactory;
 
     protected $fillable = [
@@ -28,12 +27,15 @@ class Product extends Model
     ];
 
     protected $casts = [
-        'images' => 'array',
-        'specifications' => 'array',
-        'price' => 'decimal:2',
+        'images'           => 'array',
+        'specifications'   => 'array',
+        'price'            => 'decimal:2',
         'discounted_price' => 'decimal:2',
-        'is_active' => 'boolean',
+        'is_active'        => 'boolean',
+        'stock_quantity'   => 'integer',
     ];
+
+    // ─── Relationships ────────────────────────────────────────────────────────
 
     public function businessProfile(): BelongsTo
     {
@@ -50,13 +52,84 @@ class Product extends Model
         return $this->hasMany(Review::class);
     }
 
-    public function inventory(): HasMany
-    {
-        return $this->hasMany(ProductInventory::class);
-    }
-
     public function orderItems(): HasMany
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    // ─── Scopes ───────────────────────────────────────────────────────────────
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeInStock($query)
+    {
+        return $query->where('stock_quantity', '>', 0);
+    }
+
+    public function scopeByCategory($query, $categoryId)
+    {
+        return $query->where('category_id', $categoryId);
+    }
+
+    public function scopeByBrand($query, $brand)
+    {
+        return $query->where('brand', $brand);
+    }
+
+    public function scopePriceRange($query, $min, $max)
+    {
+        return $query->whereBetween('price', [$min, $max]);
+    }
+
+    // ─── Helper Methods ───────────────────────────────────────────────────────
+
+    /**
+     * Returns discounted price if available, otherwise regular price
+     */
+    public function getEffectivePrice(): float
+    {
+        return (float) ($this->discounted_price ?? $this->price);
+    }
+
+    /**
+     * Returns true if the product has an active discount
+     */
+    public function hasDiscount(): bool
+    {
+        return !is_null($this->discounted_price)
+            && (float) $this->discounted_price < (float) $this->price;
+    }
+
+    /**
+     * Returns the discount percentage (0 if no discount)
+     */
+    public function getDiscountPercentage(): int
+    {
+        if (!$this->hasDiscount()) {
+            return 0;
+        }
+
+        return (int) round(
+            (($this->price - $this->discounted_price) / $this->price) * 100
+        );
+    }
+
+    /**
+     * Returns true if product is in stock
+     */
+    public function isInStock(): bool
+    {
+        return $this->stock_quantity > 0;
+    }
+
+    /**
+     * Returns true if product is available (active + in stock)
+     */
+    public function isAvailable(): bool
+    {
+        return $this->is_active && $this->isInStock();
     }
 }

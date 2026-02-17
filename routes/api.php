@@ -11,6 +11,7 @@ use App\Http\Controllers\ServicesController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\AppointmentController;
+use App\Http\Controllers\OrderController;
 
 /*
 |--------------------------------------------------------------------------
@@ -75,7 +76,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
     /*
-    |---------------- BUSINESS PROFILE (PROVIDER) ----------------|
+    |---------------- BUSINESS PROFILE  ----------------|
     */
 
     Route::prefix('business')->group(function () {
@@ -122,6 +123,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/appointments', [AppointmentController::class, 'businessAppointments']);
         Route::post('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirm']);
         Route::post('/appointments/{appointment}/complete', [AppointmentController::class, 'complete']);
+
+        // provider order management
+        Route::get('/orders', [OrderController::class, 'businessOrders']);
+        Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
     });
 
     /*
@@ -134,6 +139,17 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{appointment}', [AppointmentController::class, 'show']);
         Route::put('/{appointment}', [AppointmentController::class, 'update']);
         Route::delete('/{appointment}', [AppointmentController::class, 'destroy']);
+    });
+
+    /*
+    |---------------- ORDERS (CUSTOMER) ----------------|
+    */
+
+    Route::prefix('orders')->group(function () {
+        Route::get('/', [OrderController::class, 'index']);
+        Route::post('/', [OrderController::class, 'store']);
+        Route::get('/{order}', [OrderController::class, 'show']);
+        Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
     });
 
     /*

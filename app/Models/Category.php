@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Category extends Model
 {
-    /** @use HasFactory<\Database\Factories\CategoryFactory> */
     use HasFactory;
 
     protected $fillable = [
@@ -23,8 +22,10 @@ class Category extends Model
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
+        'is_active'  => 'boolean',
+        'sort_order' => 'integer',
     ];
+
 
     public function parent(): BelongsTo
     {
@@ -46,7 +47,7 @@ class Category extends Model
         return $this->hasMany(Product::class);
     }
 
-    // Scopes
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -57,8 +58,22 @@ class Category extends Model
         return $query->whereNull('parent_id');
     }
 
+    /**
+     * Order by sort_order first, then alphabetically
+     */
     public function scopeOrdered($query)
     {
-        return $query->orderBy('sort_order');
+        return $query->orderBy('sort_order')->orderBy('name');
+    }
+
+
+    public function isParent(): bool
+    {
+        return is_null($this->parent_id);
+    }
+
+    public function hasChildren(): bool
+    {
+        return $this->children()->exists();
     }
 }

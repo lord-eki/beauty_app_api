@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Order extends Model
 {
-    /** @use HasFactory<\Database\Factories\OrderFactory> */
     use HasFactory;
 
     protected $fillable = [
@@ -44,16 +43,7 @@ class Order extends Model
         'delivered_at' => 'datetime',
     ];
 
-    protected static function boot()
-    {
-        parent::boot();
-        static::creating(function ($model) {
-            if (empty($model->order_number)) {
-                $model->order_number = 'ORD-' . strtoupper(Str::random(8));
-            }
-        });
-    }
-
+    // Relationships
     public function customer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'customer_id');
@@ -64,18 +54,126 @@ class Order extends Model
         return $this->belongsTo(BusinessProfile::class);
     }
 
-    public function pickupLocation(): BelongsTo
-    {
-        return $this->belongsTo(BusinessLocation::class, 'pickup_location_id');
-    }
-
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
     }
 
-    public function promotionUsage(): HasMany
+    public function pickupLocation(): BelongsTo
     {
-        return $this->hasMany(PromotionUsage::class);
+        return $this->belongsTo(BusinessLocation::class, 'pickup_location_id');
+    }
+
+    // Scopes
+    public function scopePending($query)
+    {
+        return $query->where('status', 'pending');
+    }
+
+    public function scopeConfirmed($query)
+    {
+        return $query->where('status', 'confirmed');
+    }
+
+    public function scopeProcessing($query)
+    {
+        return $query->where('status', 'processing');
+    }
+
+    public function scopeShipped($query)
+    {
+        return $query->where('status', 'shipped');
+    }
+
+    public function scopeDelivered($query)
+    {
+        return $query->where('status', 'delivered');
+    }
+
+    public function scopeCancelled($query)
+    {
+        return $query->where('status', 'cancelled');
+    }
+
+    public function scopePaid($query)
+    {
+        return $query->where('payment_status', 'paid');
+    }
+
+    public function scopeUnpaid($query)
+    {
+        return $query->where('payment_status', 'pending');
+    }
+
+    // Helper methods
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isConfirmed(): bool
+    {
+        return $this->status === 'confirmed';
+    }
+
+    public function isDelivered(): bool
+    {
+        return $this->status === 'delivered';
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === 'cancelled';
+    }
+
+    public function isPaid(): bool
+    {
+        return $this->payment_status === 'paid';
+    }
+
+    public function isPaymentPending(): bool
+    {
+        return $this->payment_status === 'pending';
+    }
+
+    public function canBeCancelled(): bool
+    {
+        return in_array($this->status, ['pending', 'confirmed']);
+    }
+
+    public function isDelivery(): bool
+    {
+        return $this->delivery_type === 'delivery';
+    }
+
+    public function isPickup(): bool
+    {
+        return $this->delivery_type === 'pickup';
+    }
+
+    public function calculateTotal(): void
+    {
+        $this->total_amount = $this->subtotal 
+            - $this->discount_amount 
+            + $this->tax_amount 
+            + $this->delivery_fee;
+        $this->save();
+    }
+
+    public static function generateOrderNumber(): string
+    {
+        return 'ORD-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -6));
+    }
+
+    // Boot method
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($order) {
+            if (empty($order->order_number)) {
+                $order->order_number = self::generateOrderNumber();
+            }
+        });
     }
 }
