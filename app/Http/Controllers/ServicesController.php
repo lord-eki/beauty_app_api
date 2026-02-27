@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreServicesRequest;
 use App\Http\Requests\UpdateServicesRequest;
-use App\Models\Services;
+use App\Http\Requests\UploadServiceImagesRequest;
+use App\Models\Service;
 use App\Http\Resources\ServiceResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,7 +42,7 @@ class ServicesController extends Controller
     /**
      * Create a new service
      */
-    public function store(StoreServiceRequest $request): JsonResponse
+    public function store(StoreServicesRequest $request): JsonResponse
     {
         $profile = $request->user()->businessProfile;
 
@@ -75,7 +76,7 @@ class ServicesController extends Controller
     /**
      * Update a service
      */
-    public function update(UpdateServiceRequest $request, Service $service): JsonResponse
+    public function update(UpdateServicesRequest $request, Service $service): JsonResponse
     {
         // Ensure the service belongs to the authenticated user's business
         if ($service->business_profile_id !== $request->user()->businessProfile->id) {

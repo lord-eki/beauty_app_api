@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\MpesaTransactionController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\UserController;
@@ -12,6 +13,8 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\MpesaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -26,6 +29,13 @@ Route::prefix('auth')->group(function () {
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| MPESA CALLBACK (public - Safaricom posts here, no auth)
+|--------------------------------------------------------------------------
+*/
+Route::post('/mpesa/callback', [MpesaTransactionController::class, 'callback']);
 
 /*
 |--------------------------------------------------------------------------
@@ -75,6 +85,13 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
 
+    Route::prefix('subscription')->group(function () {
+        Route::get('/status', [SubscriptionController::class, 'status']);       
+        Route::post('/pay', [SubscriptionController::class, 'pay']);            
+        Route::get('/history', [SubscriptionController::class, 'history']);     
+        Route::post('/query', [SubscriptionController::class, 'query']);        
+    });
+
     /*
     |---------------- BUSINESS PROFILE  ----------------|
     */
@@ -97,8 +114,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/{businessLocation}', [BusinessLocationController::class, 'destroy']);
         });
 
-        // services
-        Route::prefix('services')->group(function () {
+        // services (subscription required)
+        Route::prefix('services')->middleware('subscription')->group(function () {
             Route::get('/', [ServicesController::class, 'index']);
             Route::post('/', [ServicesController::class, 'store']);
             Route::get('/{service}', [ServicesController::class, 'show']);
@@ -108,8 +125,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/{service}/images/{imageIndex}', [ServicesController::class, 'deleteImage']);
         });
 
-        // products
-        Route::prefix('products')->group(function () {
+        // products (subscription required)
+        Route::prefix('products')->middleware('subscription')->group(function () {
             Route::get('/', [ProductController::class, 'index']);
             Route::post('/', [ProductController::class, 'store']);
             Route::get('/{product}', [ProductController::class, 'show']);
@@ -119,14 +136,15 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);
         });
 
-        // provider appointment management
-        Route::get('/appointments', [AppointmentController::class, 'businessAppointments']);
-        Route::post('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirm']);
-        Route::post('/appointments/{appointment}/complete', [AppointmentController::class, 'complete']);
+        Route::middleware('subscription')->group(function () {
+            Route::get('/appointments', [AppointmentController::class, 'businessAppointments']);
+            Route::post('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirm']);
+            Route::post('/appointments/{appointment}/complete', [AppointmentController::class, 'complete']);
 
-        // provider order management
-        Route::get('/orders', [OrderController::class, 'businessOrders']);
-        Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
+            // provider order management
+            Route::get('/orders', [OrderController::class, 'businessOrders']);
+            Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
+        });
     });
 
     /*
@@ -165,7 +183,11 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 
-
+/*
+|--------------------------------------------------------------------------
+| PUBLIC BUSINESS BROWSING
+|--------------------------------------------------------------------------
+*/
 
 Route::prefix('business')->group(function () {
     Route::get('/{businessProfile}', [BusinessProfileController::class, 'showPublic']);
