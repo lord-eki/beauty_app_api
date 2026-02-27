@@ -15,6 +15,8 @@ use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\MpesaController;
+use App\Http\Controllers\ChatController;
+use App\Http\Controllers\InventoryController;
 
 /*
 |--------------------------------------------------------------------------
@@ -22,7 +24,6 @@ use App\Http\Controllers\MpesaController;
 |--------------------------------------------------------------------------
 */
 
-// Auth (public)
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
@@ -30,11 +31,7 @@ Route::prefix('auth')->group(function () {
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 });
 
-/*
-|--------------------------------------------------------------------------
-| MPESA CALLBACK (public - Safaricom posts here, no auth)
-|--------------------------------------------------------------------------
-*/
+// MPesa callback — must be public (Safaricom posts here)
 Route::post('/mpesa/callback', [MpesaTransactionController::class, 'callback']);
 
 /*
@@ -43,7 +40,6 @@ Route::post('/mpesa/callback', [MpesaTransactionController::class, 'callback']);
 |--------------------------------------------------------------------------
 */
 
-// Categories
 Route::prefix('categories')->group(function () {
     Route::get('/', [CategoryController::class, 'index']);
     Route::get('/{category}', [CategoryController::class, 'show']);
@@ -51,13 +47,18 @@ Route::prefix('categories')->group(function () {
     Route::get('/{category}/products', [CategoryController::class, 'products']);
 });
 
-// Search
 Route::prefix('search')->group(function () {
     Route::get('/services', [SearchController::class, 'services']);
     Route::get('/products', [SearchController::class, 'products']);
     Route::get('/businesses', [SearchController::class, 'businesses']);
 });
 
+Route::prefix('business')->group(function () {
+    Route::get('/{businessProfile}', [BusinessProfileController::class, 'showPublic']);
+    Route::get('/{businessProfile}/services', [ServicesController::class, 'public']);
+    Route::get('/{businessProfile}/products', [ProductController::class, 'public']);
+    Route::get('/{businessProfile}/reviews', [ReviewController::class, 'index']);
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -68,9 +69,8 @@ Route::prefix('search')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
 
     /*
-    |---------------- AUTHENTICATED USER ----------------|
+    |-------------- AUTH & USER ------------------------------------------------
     */
-
     Route::prefix('auth')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/refresh', [AuthController::class, 'refresh']);
@@ -84,28 +84,41 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/avatar', [UserController::class, 'deleteAvatar']);
     });
 
-
+    /*
+    |-------------- SUBSCRIPTIONS (no subscription gate — needed to pay) -------
+    */
     Route::prefix('subscription')->group(function () {
-        Route::get('/status', [SubscriptionController::class, 'status']);       
-        Route::post('/pay', [SubscriptionController::class, 'pay']);            
-        Route::get('/history', [SubscriptionController::class, 'history']);     
-        Route::post('/query', [SubscriptionController::class, 'query']);        
+        Route::get('/status', [SubscriptionController::class, 'status']);
+        Route::post('/pay', [SubscriptionController::class, 'pay']);
+        Route::get('/history', [SubscriptionController::class, 'history']);
+        Route::post('/query', [SubscriptionController::class, 'query']);
     });
 
     /*
-    |---------------- BUSINESS PROFILE  ----------------|
+    |-------------- CHAT -------------------------------------------------------
+    | Both customers and providers use these routes.
     */
+    Route::prefix('conversations')->group(function () {
+        Route::get('/', [ChatController::class, 'index']);
+        Route::post('/', [ChatController::class, 'store']);
+        Route::delete('/{conversation}', [ChatController::class, 'close']);
+        Route::get('/{conversation}/messages', [ChatController::class, 'messages']);
+        Route::post('/{conversation}/messages', [ChatController::class, 'sendMessage']);
+        Route::post('/{conversation}/typing', [ChatController::class, 'typing']);         // typing indicator
+    });
+    Route::put('/messages/{message}/read', [ChatController::class, 'markRead']);
 
+    /*
+    |-------------- BUSINESS PROFILE ------------------------------------------
+    */
     Route::prefix('business')->group(function () {
 
-        // profile management
         Route::get('/profile', [BusinessProfileController::class, 'show']);
         Route::post('/profile', [BusinessProfileController::class, 'store']);
         Route::put('/profile', [BusinessProfileController::class, 'update']);
         Route::delete('/profile', [BusinessProfileController::class, 'destroy']);
         Route::get('/statistics', [BusinessProfileController::class, 'statistics']);
 
-        // locations
         Route::prefix('locations')->group(function () {
             Route::get('/', [BusinessLocationController::class, 'index']);
             Route::post('/', [BusinessLocationController::class, 'store']);
@@ -114,43 +127,51 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/{businessLocation}', [BusinessLocationController::class, 'destroy']);
         });
 
-        // services (subscription required)
-        Route::prefix('services')->middleware('subscription')->group(function () {
-            Route::get('/', [ServicesController::class, 'index']);
-            Route::post('/', [ServicesController::class, 'store']);
-            Route::get('/{service}', [ServicesController::class, 'show']);
-            Route::put('/{service}', [ServicesController::class, 'update']);
-            Route::delete('/{service}', [ServicesController::class, 'destroy']);
-            Route::post('/{service}/images', [ServicesController::class, 'uploadImages']);
-            Route::delete('/{service}/images/{imageIndex}', [ServicesController::class, 'deleteImage']);
-        });
-
-        // products (subscription required)
-        Route::prefix('products')->middleware('subscription')->group(function () {
-            Route::get('/', [ProductController::class, 'index']);
-            Route::post('/', [ProductController::class, 'store']);
-            Route::get('/{product}', [ProductController::class, 'show']);
-            Route::put('/{product}', [ProductController::class, 'update']);
-            Route::delete('/{product}', [ProductController::class, 'destroy']);
-            Route::post('/{product}/images', [ProductController::class, 'uploadImages']);
-            Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);
-        });
-
+        // --- Subscription required below ---
         Route::middleware('subscription')->group(function () {
+
+            Route::prefix('services')->group(function () {
+                Route::get('/', [ServicesController::class, 'index']);
+                Route::post('/', [ServicesController::class, 'store']);
+                Route::get('/{service}', [ServicesController::class, 'show']);
+                Route::put('/{service}', [ServicesController::class, 'update']);
+                Route::delete('/{service}', [ServicesController::class, 'destroy']);
+                Route::post('/{service}/images', [ServicesController::class, 'uploadImages']);
+                Route::delete('/{service}/images/{imageIndex}', [ServicesController::class, 'deleteImage']);
+            });
+
+            Route::prefix('products')->group(function () {
+                Route::get('/', [ProductController::class, 'index']);
+                Route::post('/', [ProductController::class, 'store']);
+                Route::get('/{product}', [ProductController::class, 'show']);
+                Route::put('/{product}', [ProductController::class, 'update']);
+                Route::delete('/{product}', [ProductController::class, 'destroy']);
+                Route::post('/{product}/images', [ProductController::class, 'uploadImages']);
+                Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);
+            });
+
+            Route::prefix('inventory')->group(function () {
+                Route::get('/', [InventoryController::class, 'index']);
+                Route::get('/low-stock', [InventoryController::class, 'lowStock']);
+                Route::get('/movements', [InventoryController::class, 'movements']);
+                Route::post('/movement', [InventoryController::class, 'recordMovement']);
+                Route::post('/restock', [InventoryController::class, 'restock']);
+                Route::get('/{product}', [InventoryController::class, 'show']);
+                Route::put('/{product}', [InventoryController::class, 'update']);
+            });
+
             Route::get('/appointments', [AppointmentController::class, 'businessAppointments']);
             Route::post('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirm']);
             Route::post('/appointments/{appointment}/complete', [AppointmentController::class, 'complete']);
 
-            // provider order management
             Route::get('/orders', [OrderController::class, 'businessOrders']);
             Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
         });
     });
 
     /*
-    |---------------- CUSTOMER APPOINTMENTS ----------------|
+    |-------------- CUSTOMER — APPOINTMENTS -----------------------------------
     */
-
     Route::prefix('appointments')->group(function () {
         Route::get('/', [AppointmentController::class, 'index']);
         Route::post('/', [AppointmentController::class, 'store']);
@@ -160,9 +181,8 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
-    |---------------- ORDERS (CUSTOMER) ----------------|
+    |-------------- CUSTOMER — ORDERS ----------------------------------------
     */
-
     Route::prefix('orders')->group(function () {
         Route::get('/', [OrderController::class, 'index']);
         Route::post('/', [OrderController::class, 'store']);
@@ -171,27 +191,11 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
-    |---------------- REVIEWS ----------------|
+    |-------------- REVIEWS --------------------------------------------------
     */
-
     Route::prefix('reviews')->group(function () {
         Route::post('/', [ReviewController::class, 'store']);
         Route::put('/{review}', [ReviewController::class, 'update']);
         Route::delete('/{review}', [ReviewController::class, 'destroy']);
     });
-
-});
-
-
-/*
-|--------------------------------------------------------------------------
-| PUBLIC BUSINESS BROWSING
-|--------------------------------------------------------------------------
-*/
-
-Route::prefix('business')->group(function () {
-    Route::get('/{businessProfile}', [BusinessProfileController::class, 'showPublic']);
-    Route::get('/{businessProfile}/services', [ServicesController::class, 'public']);
-    Route::get('/{businessProfile}/products', [ProductController::class, 'public']);
-    Route::get('/{businessProfile}/reviews', [ReviewController::class, 'index']);
 });
