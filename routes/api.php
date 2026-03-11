@@ -18,6 +18,8 @@ use App\Http\Controllers\MpesaController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\PromotionController;
+use App\Http\Controllers\ServiceStaffController;
+use App\Http\Controllers\ServiceAvailabilityController;
 
 /*
 |--------------------------------------------------------------------------
@@ -59,11 +61,14 @@ Route::prefix('business')->group(function () {
     Route::get('/{businessProfile}/services', [ServicesController::class, 'public']);
     Route::get('/{businessProfile}/products', [ProductController::class, 'public']);
     Route::get('/{businessProfile}/reviews', [ReviewController::class, 'index']);
-    // Public: active promotions for a business
     Route::get('/{businessProfile}/promotions/active', [PromotionController::class, 'activeForBusiness']);
+
+    // Public: staff list and availability (customers need these to book)
+    Route::get('/{businessProfile}/staff', [ServiceStaffController::class, 'publicList']);
+    Route::get('/{businessProfile}/availability', [ServiceAvailabilityController::class, 'publicSlots']);
 });
 
-// Public: nearest locations search (no auth needed for discovery)
+// Public: nearest locations search
 Route::get('/locations/nearby', [BusinessLocationController::class, 'nearby']);
 
 /*
@@ -91,7 +96,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
-    |-------------- SUBSCRIPTIONS (no subscription gate — needed to pay) -------
+    |-------------- SUBSCRIPTIONS ----------------------------------------------
     */
     Route::prefix('subscription')->group(function () {
         Route::get('/status', [SubscriptionController::class, 'status']);
@@ -101,9 +106,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
-    |-------------- PROMOTIONS (customer-facing, auth only) -------------------
-    | Validate a promo code before checkout (auth required to check per-user limit).
-    | Redeem is called internally after a successful order/appointment payment.
+    |-------------- PROMOTIONS (customer-facing) -------------------------------
     */
     Route::prefix('promotions')->group(function () {
         Route::get('/validate', [PromotionController::class, 'validate']);
@@ -111,8 +114,16 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
+    |-------------- REVIEWS (customer) ----------------------------------------
+    */
+    Route::prefix('reviews')->group(function () {
+        Route::post('/', [ReviewController::class, 'store']);
+        Route::put('/{review}', [ReviewController::class, 'update']);
+        Route::delete('/{review}', [ReviewController::class, 'destroy']);
+    });
+
+    /*
     |-------------- CHAT -------------------------------------------------------
-    | Both customers and providers use these routes.
     */
     Route::prefix('conversations')->group(function () {
         Route::get('/', [ChatController::class, 'index']);
@@ -135,14 +146,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/profile', [BusinessProfileController::class, 'destroy']);
         Route::get('/statistics', [BusinessProfileController::class, 'statistics']);
 
-        // Locations — available without subscription (owners must always manage locations)
+        // Locations — no subscription gate (needed at account setup)
         Route::prefix('locations')->group(function () {
             Route::get('/', [BusinessLocationController::class, 'index']);
             Route::post('/', [BusinessLocationController::class, 'store']);
             Route::get('/{businessLocation}', [BusinessLocationController::class, 'show']);
             Route::put('/{businessLocation}', [BusinessLocationController::class, 'update']);
             Route::delete('/{businessLocation}', [BusinessLocationController::class, 'destroy']);
-            // Location sub-resources (subscription required — operational data)
             Route::middleware('subscription')->group(function () {
                 Route::get('/{businessLocation}/inventory', [BusinessLocationController::class, 'inventory']);
                 Route::get('/{businessLocation}/appointments', [BusinessLocationController::class, 'appointments']);
@@ -153,6 +163,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // --- Subscription required below ---
         Route::middleware('subscription')->group(function () {
 
+            /*-- Services --*/
             Route::prefix('services')->group(function () {
                 Route::get('/', [ServicesController::class, 'index']);
                 Route::post('/', [ServicesController::class, 'store']);
@@ -163,6 +174,7 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::delete('/{service}/images/{imageIndex}', [ServicesController::class, 'deleteImage']);
             });
 
+            /*-- Products --*/
             Route::prefix('products')->group(function () {
                 Route::get('/', [ProductController::class, 'index']);
                 Route::post('/', [ProductController::class, 'store']);
@@ -173,6 +185,7 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);
             });
 
+            /*-- Inventory --*/
             Route::prefix('inventory')->group(function () {
                 Route::get('/', [InventoryController::class, 'index']);
                 Route::get('/low-stock', [InventoryController::class, 'lowStock']);
@@ -183,7 +196,24 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::put('/{product}', [InventoryController::class, 'update']);
             });
 
-            // Promotions management (business owner)
+            /*-- Staff --*/
+            Route::prefix('staff')->group(function () {
+                Route::get('/', [ServiceStaffController::class, 'index']);
+                Route::post('/', [ServiceStaffController::class, 'store']);
+                Route::get('/{staff}', [ServiceStaffController::class, 'show']);
+                Route::put('/{staff}', [ServiceStaffController::class, 'update']);
+                Route::delete('/{staff}', [ServiceStaffController::class, 'destroy']);
+            });
+
+            /*-- Schedule / Availability --*/
+            Route::prefix('schedule')->group(function () {
+                Route::get('/', [ServiceAvailabilityController::class, 'index']);
+                Route::post('/', [ServiceAvailabilityController::class, 'store']);
+                Route::put('/{serviceAvailability}', [ServiceAvailabilityController::class, 'update']);
+                Route::delete('/{serviceAvailability}', [ServiceAvailabilityController::class, 'destroy']);
+            });
+
+            /*-- Promotions --*/
             Route::prefix('promotions')->group(function () {
                 Route::get('/', [PromotionController::class, 'index']);
                 Route::post('/', [PromotionController::class, 'store']);
@@ -192,17 +222,19 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::delete('/{promotion}', [PromotionController::class, 'destroy']);
             });
 
+            /*-- Appointments (business view) --*/
             Route::get('/appointments', [AppointmentController::class, 'businessAppointments']);
             Route::post('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirm']);
             Route::post('/appointments/{appointment}/complete', [AppointmentController::class, 'complete']);
 
+            /*-- Orders (business view) --*/
             Route::get('/orders', [OrderController::class, 'businessOrders']);
             Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
         });
     });
 
     /*
-    |-------------- CUSTOMER — APPOINTMENTS -----------------------------------
+    |-------------- CUSTOMER — APPOINTMENTS ------------------------------------
     */
     Route::prefix('appointments')->group(function () {
         Route::get('/', [AppointmentController::class, 'index']);
@@ -213,21 +245,12 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
-    |-------------- CUSTOMER — ORDERS ----------------------------------------
+    |-------------- CUSTOMER — ORDERS ------------------------------------------
     */
     Route::prefix('orders')->group(function () {
         Route::get('/', [OrderController::class, 'index']);
         Route::post('/', [OrderController::class, 'store']);
         Route::get('/{order}', [OrderController::class, 'show']);
         Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
-    });
-
-    /*
-    |-------------- REVIEWS --------------------------------------------------
-    */
-    Route::prefix('reviews')->group(function () {
-        Route::post('/', [ReviewController::class, 'store']);
-        Route::put('/{review}', [ReviewController::class, 'update']);
-        Route::delete('/{review}', [ReviewController::class, 'destroy']);
     });
 });

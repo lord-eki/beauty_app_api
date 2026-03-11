@@ -2,15 +2,11 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InventoryMovement extends Model
 {
-    /** @use HasFactory<\Database\Factories\InventoryMovementFactory> */
-    use HasFactory;
-
     public $timestamps = false;
 
     protected $fillable = [
@@ -24,6 +20,7 @@ class InventoryMovement extends Model
     ];
 
     protected $casts = [
+        'quantity'   => 'integer',
         'created_at' => 'datetime',
     ];
 

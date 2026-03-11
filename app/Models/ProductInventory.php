@@ -2,15 +2,13 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProductInventory extends Model
 {
-    /** @use HasFactory<\Database\Factories\ProductInventoryFactory> */
-    use HasFactory;
+    protected $table = 'product_inventory';
 
     protected $fillable = [
         'product_id',
@@ -24,8 +22,12 @@ class ProductInventory extends Model
     ];
 
     protected $casts = [
-        'cost_price' => 'decimal:2',
-        'last_restocked_at' => 'datetime',
+        'quantity_available'  => 'integer',
+        'quantity_reserved'   => 'integer',
+        'minimum_stock_level' => 'integer',
+        'maximum_stock_level' => 'integer',
+        'cost_price'          => 'decimal:2',
+        'last_restocked_at'   => 'datetime',
     ];
 
     public function product(): BelongsTo
@@ -43,13 +45,14 @@ class ProductInventory extends Model
         return $this->hasMany(InventoryMovement::class);
     }
 
+    /** Net quantity physically available minus reserved for pending orders. */
+    public function netAvailable(): int
+    {
+        return max(0, $this->quantity_available - $this->quantity_reserved);
+    }
+
     public function isLowStock(): bool
     {
         return $this->quantity_available <= $this->minimum_stock_level;
-    }
-
-    public function isOutOfStock(): bool
-    {
-        return $this->quantity_available <= 0;
     }
 }

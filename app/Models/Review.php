@@ -2,16 +2,12 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Review extends Model
 {
-    /** @use HasFactory<\Database\Factories\ReviewFactory> */
-    use HasFactory;
-
-     protected $fillable = [
+    protected $fillable = [
         'user_id',
         'business_profile_id',
         'service_id',
@@ -23,8 +19,9 @@ class Review extends Model
     ];
 
     protected $casts = [
-        'images' => 'array',
+        'images'      => 'array',
         'is_verified' => 'boolean',
+        'rating'      => 'integer',
     ];
 
     public function user(): BelongsTo
