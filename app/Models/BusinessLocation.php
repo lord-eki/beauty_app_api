@@ -2,18 +2,23 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BusinessLocation extends Model
 {
-   use HasFactory;
-
     protected $fillable = [
-        'business_profile_id', 'name', 'address', 'city', 'county',
-        'postal_code', 'latitude', 'longitude', 'is_primary', 'is_active',
+        'business_profile_id',
+        'name',
+        'address',
+        'city',
+        'county',
+        'postal_code',
+        'latitude',
+        'longitude',
+        'is_primary',
+        'is_active',
     ];
 
     protected $casts = [
@@ -22,6 +27,10 @@ class BusinessLocation extends Model
         'is_primary' => 'boolean',
         'is_active'  => 'boolean',
     ];
+
+    // -------------------------------------------------------------------------
+    // Relationships
+    // -------------------------------------------------------------------------
 
     public function businessProfile(): BelongsTo
     {
@@ -38,17 +47,41 @@ class BusinessLocation extends Model
         return $this->hasMany(Appointment::class);
     }
 
-    public function orders(): HasMany
+    public function serviceAvailability(): HasMany
     {
-        return $this->hasMany(Order::class, 'pickup_location_id');
+        return $this->hasMany(ServiceAvailability::class);
     }
 
-    // Helper: get total available stock for a product at this location
-    public function stockFor(int $productId): int
+    // -------------------------------------------------------------------------
+    // Scopes
+    // -------------------------------------------------------------------------
+
+    public function scopeActive($query)
     {
-        return $this->inventory()
-            ->where('product_id', $productId)
-            ->value('quantity_available') ?? 0;
+        return $query->where('is_active', true);
     }
 
+    public function scopePrimary($query)
+    {
+        return $query->where('is_primary', true);
+    }
+
+    /**
+     * Order by proximity to a lat/lng point (Haversine formula).
+     */
+    public function scopeNearby($query, float $lat, float $lng, float $radiusKm = 50)
+    {
+        $haversine = "(
+            6371 * ACOS(
+                COS(RADIANS(?)) * COS(RADIANS(latitude)) *
+                COS(RADIANS(longitude) - RADIANS(?)) +
+                SIN(RADIANS(?)) * SIN(RADIANS(latitude))
+            )
+        )";
+
+        return $query
+            ->selectRaw("*, {$haversine} AS distance_km", [$lat, $lng, $lat])
+            ->having('distance_km', '<=', $radiusKm)
+            ->orderBy('distance_km');
+    }
 }

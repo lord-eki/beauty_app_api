@@ -2,16 +2,13 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 class Promotion extends Model
 {
-    /** @use HasFactory<\Database\Factories\PromotionFactory> */
-    use HasFactory;
-
     protected $fillable = [
         'business_profile_id',
         'title',
@@ -36,38 +33,130 @@ class Promotion extends Model
     ];
 
     protected $casts = [
-        'discount_percentage' => 'decimal:2',
-        'discount_amount' => 'decimal:2',
-        'minimum_purchase' => 'decimal:2',
-        'maximum_discount' => 'decimal:2',
-        'target_items' => 'array',
-        'applicable_locations' => 'array',
-        'start_date' => 'date',
-        'end_date' => 'date',
-        'is_active' => 'boolean',
+        'target_items'          => 'array',
+        'applicable_locations'  => 'array',
+        'start_date'            => 'date',
+        'end_date'              => 'date',
+        'is_active'             => 'boolean',
+        'discount_percentage'   => 'decimal:2',
+        'discount_amount'       => 'decimal:2',
+        'minimum_purchase'      => 'decimal:2',
+        'maximum_discount'      => 'decimal:2',
     ];
+
+    // -------------------------------------------------------------------------
+    // Relationships
+    // -------------------------------------------------------------------------
 
     public function businessProfile(): BelongsTo
     {
         return $this->belongsTo(BusinessProfile::class);
     }
 
-    public function usage(): HasMany
+    public function usages(): HasMany
     {
         return $this->hasMany(PromotionUsage::class);
     }
 
-    public function isValid(): bool
+    // -------------------------------------------------------------------------
+    // Scopes
+    // -------------------------------------------------------------------------
+
+    /** Only promotions currently active by date and flag. */
+    public function scopeActive($query)
     {
-        return $this->is_active && 
-               $this->start_date->isPast() && 
-               $this->end_date->isFuture() && 
-               ($this->usage_limit === null || $this->usage_count < $this->usage_limit);
+        $today = Carbon::today()->toDateString();
+
+        return $query->where('is_active', true)
+                     ->where('start_date', '<=', $today)
+                     ->where('end_date', '>=', $today);
     }
 
-    public function canUserUse(User $user): bool
+    /** Promotions belonging to a business. */
+    public function scopeForBusiness($query, int $businessProfileId)
     {
-        $userUsageCount = $this->usage()->where('user_id', $user->id)->count();
-        return $userUsageCount < $this->user_usage_limit;
+        return $query->where('business_profile_id', $businessProfileId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /** Whether this promotion is currently live (active + within dates). */
+    public function isCurrentlyActive(): bool
+    {
+        $today = Carbon::today();
+
+        return $this->is_active
+            && $today->greaterThanOrEqualTo($this->start_date)
+            && $today->lessThanOrEqualTo($this->end_date);
+    }
+
+    /** Whether the global usage cap has been reached. */
+    public function hasReachedGlobalLimit(): bool
+    {
+        return $this->usage_limit !== null && $this->usage_count >= $this->usage_limit;
+    }
+
+    /**
+     * How many times a specific user has already redeemed this promotion.
+     */
+    public function usageCountForUser(int $userId): int
+    {
+        return $this->usages()->where('user_id', $userId)->count();
+    }
+
+    /**
+     * Whether a user is still eligible (under per-user cap).
+     */
+    public function isEligibleForUser(int $userId): bool
+    {
+        return $this->usageCountForUser($userId) < $this->user_usage_limit;
+    }
+
+    /**
+     * Calculate the discount amount for a given subtotal.
+     *
+     * @param  float $subtotal   Cart/appointment subtotal in KES
+     * @return float             Discount to deduct
+     */
+    public function calculateDiscount(float $subtotal): float
+    {
+        if ($this->minimum_purchase && $subtotal < $this->minimum_purchase) {
+            return 0.0;
+        }
+
+        $discount = match ($this->promotion_type) {
+            'percentage'          => $subtotal * ($this->discount_percentage / 100),
+            'fixed_amount'        => (float) $this->discount_amount,
+            'free_service'        => (float) $this->discount_amount,   // set by admin
+            'buy_x_get_y'         => $this->calcBuyXGetY($subtotal),
+            'bundle_deal'         => (float) $this->discount_amount,
+            'first_time_customer' => $this->discount_percentage
+                                        ? $subtotal * ($this->discount_percentage / 100)
+                                        : (float) $this->discount_amount,
+            'loyalty_reward'      => (float) $this->discount_amount,
+            default               => 0.0,
+        };
+
+        // Cap at maximum_discount if set
+        if ($this->maximum_discount !== null) {
+            $discount = min($discount, (float) $this->maximum_discount);
+        }
+
+        // Never discount more than the subtotal
+        return min(round($discount, 2), $subtotal);
+    }
+
+    private function calcBuyXGetY(float $subtotal): float
+    {
+        // Simplified: give discount equivalent to get_quantity items proportionally
+        if (!$this->buy_quantity || !$this->get_quantity) {
+            return 0.0;
+        }
+
+        $unitPrice = $subtotal / ($this->buy_quantity + $this->get_quantity);
+
+        return $unitPrice * $this->get_quantity;
     }
 }

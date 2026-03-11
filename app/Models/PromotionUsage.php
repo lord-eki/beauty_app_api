@@ -2,16 +2,14 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PromotionUsage extends Model
 {
-    /** @use HasFactory<\Database\Factories\PromotionUsageFactory> */
-    use HasFactory;
+    public $timestamps = false;   
 
-    public $timestamps = false;
+    protected $table = 'promotion_usage';
 
     protected $fillable = [
         'promotion_id',
@@ -23,8 +21,12 @@ class PromotionUsage extends Model
 
     protected $casts = [
         'discount_applied' => 'decimal:2',
-        'created_at' => 'datetime',
+        'created_at'       => 'datetime',
     ];
+
+    // -------------------------------------------------------------------------
+    // Relationships
+    // -------------------------------------------------------------------------
 
     public function promotion(): BelongsTo
     {

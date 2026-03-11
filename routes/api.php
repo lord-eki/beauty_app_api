@@ -17,6 +17,7 @@ use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\MpesaController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\PromotionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -58,7 +59,12 @@ Route::prefix('business')->group(function () {
     Route::get('/{businessProfile}/services', [ServicesController::class, 'public']);
     Route::get('/{businessProfile}/products', [ProductController::class, 'public']);
     Route::get('/{businessProfile}/reviews', [ReviewController::class, 'index']);
+    // Public: active promotions for a business
+    Route::get('/{businessProfile}/promotions/active', [PromotionController::class, 'activeForBusiness']);
 });
+
+// Public: nearest locations search (no auth needed for discovery)
+Route::get('/locations/nearby', [BusinessLocationController::class, 'nearby']);
 
 /*
 |--------------------------------------------------------------------------
@@ -95,6 +101,16 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
+    |-------------- PROMOTIONS (customer-facing, auth only) -------------------
+    | Validate a promo code before checkout (auth required to check per-user limit).
+    | Redeem is called internally after a successful order/appointment payment.
+    */
+    Route::prefix('promotions')->group(function () {
+        Route::get('/validate', [PromotionController::class, 'validate']);
+        Route::post('/redeem', [PromotionController::class, 'redeem']);
+    });
+
+    /*
     |-------------- CHAT -------------------------------------------------------
     | Both customers and providers use these routes.
     */
@@ -104,7 +120,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{conversation}', [ChatController::class, 'close']);
         Route::get('/{conversation}/messages', [ChatController::class, 'messages']);
         Route::post('/{conversation}/messages', [ChatController::class, 'sendMessage']);
-        Route::post('/{conversation}/typing', [ChatController::class, 'typing']);         // typing indicator
+        Route::post('/{conversation}/typing', [ChatController::class, 'typing']);
     });
     Route::put('/messages/{message}/read', [ChatController::class, 'markRead']);
 
@@ -119,12 +135,19 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/profile', [BusinessProfileController::class, 'destroy']);
         Route::get('/statistics', [BusinessProfileController::class, 'statistics']);
 
+        // Locations — available without subscription (owners must always manage locations)
         Route::prefix('locations')->group(function () {
             Route::get('/', [BusinessLocationController::class, 'index']);
             Route::post('/', [BusinessLocationController::class, 'store']);
             Route::get('/{businessLocation}', [BusinessLocationController::class, 'show']);
             Route::put('/{businessLocation}', [BusinessLocationController::class, 'update']);
             Route::delete('/{businessLocation}', [BusinessLocationController::class, 'destroy']);
+            // Location sub-resources (subscription required — operational data)
+            Route::middleware('subscription')->group(function () {
+                Route::get('/{businessLocation}/inventory', [BusinessLocationController::class, 'inventory']);
+                Route::get('/{businessLocation}/appointments', [BusinessLocationController::class, 'appointments']);
+                Route::get('/{businessLocation}/staff', [BusinessLocationController::class, 'staff']);
+            });
         });
 
         // --- Subscription required below ---
@@ -158,6 +181,15 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::post('/restock', [InventoryController::class, 'restock']);
                 Route::get('/{product}', [InventoryController::class, 'show']);
                 Route::put('/{product}', [InventoryController::class, 'update']);
+            });
+
+            // Promotions management (business owner)
+            Route::prefix('promotions')->group(function () {
+                Route::get('/', [PromotionController::class, 'index']);
+                Route::post('/', [PromotionController::class, 'store']);
+                Route::get('/{promotion}', [PromotionController::class, 'show']);
+                Route::put('/{promotion}', [PromotionController::class, 'update']);
+                Route::delete('/{promotion}', [PromotionController::class, 'destroy']);
             });
 
             Route::get('/appointments', [AppointmentController::class, 'businessAppointments']);
