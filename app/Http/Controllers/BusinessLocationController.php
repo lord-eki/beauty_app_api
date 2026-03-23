@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BusinessLocation;
 use App\Models\BusinessProfile;
+use App\Models\ServiceStaff;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -199,15 +200,13 @@ class BusinessLocationController extends Controller
     {
         $this->authorizeLocation($request, $businessLocation);
 
-        // Staff aren't directly FK'd to location — use availability as the link
-        $staffIds = $businessLocation->serviceAvailability()
-            ->whereNotNull('staff_id')
-            ->pluck('staff_id')
-            ->unique();
-
-        $staff = \App\Models\ServiceStaff::whereIn('id', $staffIds)
-            ->where('is_active', true)
-            ->get();
+        $staff = ServiceStaff::query()
+        ->join('service_availabilities','service_staff.id', '=','service_availabilites.service_staff')
+        ->where('service_availabilities.business_location_id',$businessLocation->id)
+        ->where('service_staff.is_active',true)
+        ->select('service_staff.*')
+        ->distinct()
+        ->get();
 
         return response()->json(['success' => true, 'data' => $staff]);
     }

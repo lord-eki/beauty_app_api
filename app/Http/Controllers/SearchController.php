@@ -25,7 +25,7 @@ class SearchController extends Controller
             $searchTerm = $request->query;
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('name', 'like', "%{$searchTerm}%")
-                  ->orWhere('description', 'like', "%{$searchTerm}%");
+                    ->orWhere('description', 'like', "%{$searchTerm}%");
             });
         }
 
@@ -51,17 +51,20 @@ class SearchController extends Controller
         if ($request->filled('lat') && $request->filled('lng')) {
             $lat = $request->lat;
             $lng = $request->lng;
-            $radius = $request->input('radius', 10); // Default 10km
+            $radius = $request->input('radius', 10);
 
-            $query->whereHas('businessProfile.locations', function ($q) use ($lat, $lng, $radius) {
-                $q->selectRaw(
-                    "*, (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance",
-                    [$lat, $lng, $lat]
-                )->having('distance', '<=', $radius);
-            });
+            $query->join('business_profiles', 'services.business_profile_id', '=', 'business_profiles.id')
+                ->join('locations', 'locations.business_profiles_id', '=', 'business_profiles.id')
+                ->selectRaw('services.*, (6370 * acos(...)) AS distance')
+                ->having('distance', '<=', $radius)
+                ->orderBy('distance');
         }
 
-        $perPage = $request->input('per_page', 15);
+        $sortBy = $request->input('sort_by', 'created_at');
+        $sortOrder = in_array($request->input('sort_order'), ['asc', 'desc']) ? $request->input('sort_order') : 'desc';
+        $query->orderBy($sortBy, $sortOrder);
+
+        $perPage = min((int) $request->input('per_page', 15), 100);
         $services = $query->paginate($perPage);
 
         return response()->json([
@@ -90,8 +93,8 @@ class SearchController extends Controller
             $searchTerm = $request->query;
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('name', 'like', "%{$searchTerm}%")
-                  ->orWhere('description', 'like', "%{$searchTerm}%")
-                  ->orWhere('brand', 'like', "%{$searchTerm}%");
+                    ->orWhere('description', 'like', "%{$searchTerm}%")
+                    ->orWhere('brand', 'like', "%{$searchTerm}%");
             });
         }
 
@@ -126,15 +129,19 @@ class SearchController extends Controller
             $lng = $request->lng;
             $radius = $request->input('radius', 10);
 
-            $query->whereHas('businessProfile.locations', function ($q) use ($lat, $lng, $radius) {
-                $q->selectRaw(
-                    "*, (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance",
-                    [$lat, $lng, $lat]
-                )->having('distance', '<=', $radius);
-            });
+            $query->join('business_profiles', 'services.business_profile_id', '=', 'business_profiles.id')
+                ->join('locations', 'locations.business_profiles_id', '=', 'business_profiles.id')
+                ->selectRaw('services.*, (6370 * acos(...)) AS distance')
+                ->having('distance', '<=', $radius)
+                ->orderBy('distance');
+
         }
 
-        $perPage = $request->input('per_page', 15);
+        $sortBy = $request->input('sort_by', 'created_at');
+        $sortOrder = in_array($request->input('sort_order'), ['asc', 'desc']) ? $request->input('sort_order') : 'desc';
+        $query->orderBy($sortBy, $sortOrder);
+
+        $perPage = min((int) $request->input('per_page', 15), 100);
         $products = $query->paginate($perPage);
 
         return response()->json([
@@ -163,7 +170,7 @@ class SearchController extends Controller
             $searchTerm = $request->query;
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('business_name', 'like', "%{$searchTerm}%")
-                  ->orWhere('description', 'like', "%{$searchTerm}%");
+                    ->orWhere('description', 'like', "%{$searchTerm}%");
             });
         }
 
@@ -192,7 +199,7 @@ class SearchController extends Controller
 
             $query->whereHas('locations', function ($q) use ($lat, $lng, $radius) {
                 $q->selectRaw(
-                    "*, (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance",
+                    '*, (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance',
                     [$lat, $lng, $lat]
                 )->having('distance', '<=', $radius);
             });
@@ -201,7 +208,7 @@ class SearchController extends Controller
         // Sorting
         $sortBy = $request->input('sort_by', 'created_at');
         $sortOrder = $request->input('sort_order', 'desc');
-        
+
         if ($sortBy === 'rating') {
             $query->orderBy('average_rating', $sortOrder);
         } elseif ($sortBy === 'reviews') {

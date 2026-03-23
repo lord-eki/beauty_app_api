@@ -17,10 +17,8 @@ class CategoryController extends Controller
     public function index(Request $request): JsonResponse
     {
         $categories = Category::active()
-            ->parents()
-            ->with('children')
-            ->ordered()
-            ->get();
+            ->parents()->with('children')
+            ->ordered()->get();
 
         return response()->json([
             'success' => true,
@@ -48,7 +46,7 @@ class CategoryController extends Controller
 
         $services = $category->services()
             ->active()
-            ->with(['businessProfile', 'category'])
+            ->with(['businessProfile'])
             ->paginate($perPage);
 
         return response()->json([
@@ -66,7 +64,7 @@ class CategoryController extends Controller
 
         $products = $category->products()
             ->active()
-            ->with(['businessProfile', 'category'])
+            ->with(['businessProfile'])
             ->paginate($perPage);
 
         return response()->json([

@@ -172,7 +172,7 @@ class AppointmentController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Appointment confirmed successfully',
-            'data' => new AppointmentResource($appointment->fresh()),
+            'data' => new AppointmentResource($appointment->load(['businessProfile' ,'service','staff'])),
         ], 200);
     }
 }
