@@ -11,12 +11,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ChatController extends Controller
-{ /*
-    |--------------------------------------------------------------------------
-    | GET /api/conversations
-    |--------------------------------------------------------------------------
-    | Returns all conversations for the authenticated user.
-    */
+{
+    /*
+       |--------------------------------------------------------------------------
+       | GET /api/conversations
+       |--------------------------------------------------------------------------
+       | Returns all conversations for the authenticated user.
+       */
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -25,17 +26,17 @@ class ChatController extends Controller
             'customer:id,first_name,last_name,profile_image',
             'provider:id,first_name,last_name,profile_image',
             'businessProfile:id,business_name',
-            'messages' => fn($q) => $q->latest('created_at')->limit(1),
+            'messages' => fn ($q) => $q->latest('created_at')->limit(1),
         ])
             ->where(function ($q) use ($user) {
                 $q->where('customer_id', $user->id)
-                  ->orWhere('provider_id', $user->id);
+                    ->orWhere('provider_id', $user->id);
             })
             ->where('status', '!=', 'blocked')
             ->orderByDesc('last_message_at')
             ->paginate(20);
 
-        return $this->success($conversations->through(fn($c) => $this->formatConversation($c, $user->id)));
+        return $this->success($conversations->through(fn ($c) => $this->formatConversation($c, $user->id)));
     }
 
     /*
@@ -89,21 +90,25 @@ class ChatController extends Controller
 
         $messages = ChatMessage::where('conversation_id', $conversation->id)
             ->with('sender:id,first_name,last_name,profile_image')
+            ->select(['id', 'conversation_id', 'sender_id', 'message_type', 'content',
+                'file_url', 'file_name', 'is_read', 'read_at', 'created_at'])
             ->orderByDesc('created_at')
             ->paginate(30);
 
-        // Mark unread messages from the other party as read and broadcast receipts
-        $unread = ChatMessage::where('conversation_id', $conversation->id)
+        // Single bulk update instead of a loop
+        $unreadIds = ChatMessage::where('conversation_id', $conversation->id)
             ->where('sender_id', '!=', $request->user()->id)
             ->where('is_read', false)
-            ->get();
+            ->pluck('id');
 
-        foreach ($unread as $msg) {
-            $msg->update(['is_read' => true, 'read_at' => now()]);
-            broadcast(new MessageRead($msg))->toOthers();
+        if ($unreadIds->isNotEmpty()) {
+            ChatMessage::whereIn('id', $unreadIds)
+                ->update(['is_read' => true, 'read_at' => now()]);
+
+            broadcast(new MessageRead($conversation->id, $unreadIds->toArray()))->toOthers();
         }
 
-        return $this->success($messages->through(fn($m) => $this->formatMessage($m)));
+        return $this->success($messages->through(fn ($m) => $this->formatMessage($m)));
     }
 
     /*
@@ -122,30 +127,30 @@ class ChatController extends Controller
         }
 
         $request->validate([
-            'content'      => ['required_without:file', 'nullable', 'string', 'max:2000'],
+            'content' => ['required_without:file', 'nullable', 'string', 'max:2000'],
             'message_type' => ['sometimes', 'in:text,image,file'],
-            'file'         => ['required_without:content', 'nullable', 'file', 'max:10240'],
+            'file' => ['required_without:content', 'nullable', 'file', 'max:10240'],
         ]);
 
-        $fileUrl  = null;
+        $fileUrl = null;
         $fileName = null;
-        $type     = $request->message_type ?? 'text';
+        $type = $request->message_type ?? 'text';
 
         if ($request->hasFile('file')) {
-            $file     = $request->file('file');
+            $file = $request->file('file');
             $fileName = $file->getClientOriginalName();
-            $fileUrl  = $file->store('chat-files/' . $conversation->id, 'public');
-            $type     = str_starts_with($file->getMimeType(), 'image/') ? 'image' : 'file';
+            $fileUrl = $file->store('chat-files/'.$conversation->id, 'public');
+            $type = str_starts_with($file->getMimeType(), 'image/') ? 'image' : 'file';
         }
 
         $message = ChatMessage::create([
             'conversation_id' => $conversation->id,
-            'sender_id'       => $request->user()->id,
-            'message_type'    => $type,
-            'content'         => $request->content,
-            'file_url'        => $fileUrl ? asset('storage/' . $fileUrl) : null,
-            'file_name'       => $fileName,
-            'is_read'         => false,
+            'sender_id' => $request->user()->id,
+            'message_type' => $type,
+            'content' => $request->content,
+            'file_url' => $fileUrl ? asset('storage/'.$fileUrl) : null,
+            'file_name' => $fileName,
+            'is_read' => false,
         ]);
 
         $conversation->update(['last_message_at' => now()]);
@@ -165,7 +170,7 @@ class ChatController extends Controller
     */
     public function markRead(Request $request, ChatMessage $message): JsonResponse
     {
-        $user         = $request->user();
+        $user = $request->user();
         $conversation = $message->conversation;
 
         $this->authorizeConversation($user, $conversation);
@@ -246,48 +251,48 @@ class ChatController extends Controller
     private function formatConversation(ChatConversation $c, int $authUserId): array
     {
         $lastMessage = $c->messages->first();
-        $isCustomer  = $authUserId === $c->customer_id;
-        $otherParty  = $isCustomer ? $c->provider : $c->customer;
+        $isCustomer = $authUserId === $c->customer_id;
+        $otherParty = $isCustomer ? $c->provider : $c->customer;
 
         return [
-            'id'              => $c->id,
-            'status'          => $c->status,
-            'business'        => [
-                'id'   => $c->businessProfile?->id,
+            'id' => $c->id,
+            'status' => $c->status,
+            'business' => [
+                'id' => $c->businessProfile?->id,
                 'name' => $c->businessProfile?->business_name,
             ],
-            'other_party'     => [
-                'id'            => $otherParty?->id,
-                'name'          => trim(($otherParty?->first_name ?? '') . ' ' . ($otherParty?->last_name ?? '')),
+            'other_party' => [
+                'id' => $otherParty?->id,
+                'name' => trim(($otherParty?->first_name ?? '').' '.($otherParty?->last_name ?? '')),
                 'profile_image' => $otherParty?->profile_image,
             ],
-            'last_message'    => $lastMessage ? [
-                'content'    => $lastMessage->content,
-                'type'       => $lastMessage->message_type,
+            'last_message' => $lastMessage ? [
+                'content' => $lastMessage->content,
+                'type' => $lastMessage->message_type,
                 'created_at' => $lastMessage->created_at?->toIso8601String(),
-                'is_mine'    => $lastMessage->sender_id === $authUserId,
+                'is_mine' => $lastMessage->sender_id === $authUserId,
             ] : null,
             'last_message_at' => $c->last_message_at?->toIso8601String(),
-            'created_at'      => $c->created_at?->toIso8601String(),
+            'created_at' => $c->created_at?->toIso8601String(),
         ];
     }
 
     private function formatMessage(ChatMessage $m): array
     {
         return [
-            'id'           => $m->id,
-            'sender'       => [
-                'id'            => $m->sender?->id,
-                'name'          => trim(($m->sender?->first_name ?? '') . ' ' . ($m->sender?->last_name ?? '')),
+            'id' => $m->id,
+            'sender' => [
+                'id' => $m->sender?->id,
+                'name' => trim(($m->sender?->first_name ?? '').' '.($m->sender?->last_name ?? '')),
                 'profile_image' => $m->sender?->profile_image,
             ],
             'message_type' => $m->message_type,
-            'content'      => $m->content,
-            'file_url'     => $m->file_url,
-            'file_name'    => $m->file_name,
-            'is_read'      => $m->is_read,
-            'read_at'      => $m->read_at?->toIso8601String(),
-            'created_at'   => $m->created_at?->toIso8601String(),
+            'content' => $m->content,
+            'file_url' => $m->file_url,
+            'file_name' => $m->file_name,
+            'is_read' => $m->is_read,
+            'read_at' => $m->read_at?->toIso8601String(),
+            'created_at' => $m->created_at?->toIso8601String(),
         ];
     }
 

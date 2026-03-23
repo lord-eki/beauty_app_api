@@ -11,18 +11,26 @@ use Illuminate\Support\Facades\DB;
 
 class BusinessLocationController extends Controller
 {
-    // =========================================================================
-    // BUSINESS — manage their own locations
-    // =========================================================================
+  
 
-    /**
-     * GET /api/business/locations
-     */
+
     public function index(Request $request): JsonResponse
     {
         $business = $this->getAuthBusiness($request);
 
         $locations = BusinessLocation::where('business_profile_id', $business->id)
+            ->select([
+                'id',
+                'business_profile_id',
+                'name',
+                'address',
+                'city',
+                'county',
+                'latitude',
+                'longitude',
+                'is_primary',
+                'is_active',
+            ])
             ->orderByDesc('is_primary')
             ->orderBy('name')
             ->get();
@@ -129,7 +137,7 @@ class BusinessLocationController extends Controller
             $wasPrimary = $businessLocation->is_primary;
             $businessLocation->delete();
 
-            // Auto-promote first remaining location if primary was deleted
+            // Auto-promote the next location if the primary was deleted
             if ($wasPrimary) {
                 BusinessLocation::where('business_profile_id', $business->id)
                     ->orderBy('id')
@@ -144,9 +152,6 @@ class BusinessLocationController extends Controller
         });
     }
 
-    // =========================================================================
-    // Location-specific sub-resources (read-only, business-scoped)
-    // =========================================================================
 
     /**
      * GET /api/business/locations/{businessLocation}/inventory
@@ -163,10 +168,7 @@ class BusinessLocationController extends Controller
         return response()->json(['success' => true, 'data' => $inventory]);
     }
 
-    /**
-     * GET /api/business/locations/{businessLocation}/appointments
-     * Appointments scheduled at this location.
-     */
+   
     public function appointments(Request $request, BusinessLocation $businessLocation): JsonResponse
     {
         $this->authorizeLocation($request, $businessLocation);
@@ -177,7 +179,11 @@ class BusinessLocationController extends Controller
         ]);
 
         $query = $businessLocation->appointments()
-            ->with(['customer:id,first_name,last_name,phone', 'service:id,name', 'staff:id,name'])
+            ->with([
+                'customer:id,first_name,last_name,phone',
+                'service:id,name',
+                'staff:id,name',
+            ])
             ->orderBy('appointment_date')
             ->orderBy('start_time');
 
@@ -192,33 +198,28 @@ class BusinessLocationController extends Controller
         return response()->json(['success' => true, 'data' => $query->paginate(20)]);
     }
 
-    /**
-     * GET /api/business/locations/{businessLocation}/staff
-     * Staff assigned to (or available at) this location.
-     */
+
+     
     public function staff(Request $request, BusinessLocation $businessLocation): JsonResponse
     {
         $this->authorizeLocation($request, $businessLocation);
 
         $staff = ServiceStaff::query()
-        ->join('service_availabilities','service_staff.id', '=','service_availabilites.service_staff')
-        ->where('service_availabilities.business_location_id',$businessLocation->id)
-        ->where('service_staff.is_active',true)
-        ->select('service_staff.*')
-        ->distinct()
-        ->get();
+            ->join(
+                'service_availabilities',
+                'service_staff.id', '=', 'service_availabilities.staff_id'  // fixed
+            )
+            ->where('service_availabilities.business_location_id', $businessLocation->id)
+            ->where('service_staff.is_active', true)
+            ->select('service_staff.id', 'service_staff.name', 'service_staff.email',
+                     'service_staff.phone', 'service_staff.specialties')
+            ->distinct()
+            ->get();
 
         return response()->json(['success' => true, 'data' => $staff]);
     }
 
-    // =========================================================================
-    // PUBLIC — nearest locations search
-    // =========================================================================
 
-    /**
-     * GET /api/locations/nearby?lat=&lng=&radius=&business_id=
-     * Find active locations near a coordinate.
-     */
     public function nearby(Request $request): JsonResponse
     {
         $request->validate([

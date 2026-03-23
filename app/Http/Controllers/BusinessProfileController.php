@@ -6,9 +6,10 @@ use App\Http\Requests\StoreBusinessProfileRequest;
 use App\Http\Requests\UpdateBusinessProfileRequest;
 use App\Http\Resources\BusinessProfileResource;
 use App\Models\BusinessProfile;
+use App\Services\CacheService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class BusinessProfileController extends Controller
 {
@@ -19,7 +20,7 @@ class BusinessProfileController extends Controller
     public function show(Request $request): JsonResponse
     {
         // Ensure user is a provider
-        if (!$request->user()->isProvider()) {
+        if (! $request->user()->isProvider()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Only providers can access business profiles',
@@ -28,7 +29,7 @@ class BusinessProfileController extends Controller
 
         $businessProfile = $request->user()->businessProfile;
 
-        if (!$businessProfile) {
+        if (! $businessProfile) {
             return response()->json([
                 'success' => false,
                 'message' => 'Business profile not found. Please create one first.',
@@ -48,7 +49,7 @@ class BusinessProfileController extends Controller
     public function store(StoreBusinessProfileRequest $request): JsonResponse
     {
         // Ensure user is a provider
-        if (!$request->user()->isProvider()) {
+        if (! $request->user()->isProvider()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Only providers can create business profiles',
@@ -90,8 +91,7 @@ class BusinessProfileController extends Controller
     {
         $businessProfile = $request->user()->businessProfile;
 
-
-        if (!$businessProfile) {
+        if (! $businessProfile) {
             return response()->json([
                 'success' => false,
                 'message' => 'Business profile not found. Please create one first.',
@@ -100,6 +100,9 @@ class BusinessProfileController extends Controller
 
         // Update business profile
         $businessProfile->update($request->validated());
+
+        CacheService::forgetBusiness($businessProfile->id);
+        CacheService::forgetSearchResults();
 
         return response()->json([
             'success' => true,
@@ -116,7 +119,7 @@ class BusinessProfileController extends Controller
     {
         $businessProfile = $request->user()->businessProfile;
 
-        if (!$businessProfile) {
+        if (! $businessProfile) {
             return response()->json([
                 'success' => false,
                 'message' => 'Business profile not found',
@@ -127,7 +130,7 @@ class BusinessProfileController extends Controller
             $businessProfile->locations()->delete();
             $businessProfile->services()->delete();
             $businessProfile->products()->delete();
-            
+
             // Delete business profile
             $businessProfile->delete();
         });
@@ -146,10 +149,10 @@ class BusinessProfileController extends Controller
     {
         $businessProfile = BusinessProfile::with(['locations', 'user'])
             ->where('id', $id)
-            ->orWhere('id', $id) 
+            ->orWhere('id', $id)
             ->first();
 
-        if (!$businessProfile) {
+        if (! $businessProfile) {
             return response()->json([
                 'success' => false,
                 'message' => 'Business not found',
@@ -185,7 +188,7 @@ class BusinessProfileController extends Controller
             $searchTerm = $request->query;
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('business_name', 'LIKE', "%{$searchTerm}%")
-                  ->orWhere('description', 'LIKE', "%{$searchTerm}%");
+                    ->orWhere('description', 'LIKE', "%{$searchTerm}%");
             });
         }
 
@@ -200,21 +203,21 @@ class BusinessProfileController extends Controller
             $radius = $request->radius ?? 10; // Default 10km
 
             $query->whereHas('locations', function ($q) use ($lat, $lng, $radius) {
-                $q->selectRaw("
+                $q->selectRaw('
                     *, 
                     (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * 
                     cos(radians(longitude) - radians(?)) + sin(radians(?)) * 
                     sin(radians(latitude)))) AS distance
-                ", [$lat, $lng, $lat])
-                ->having('distance', '<=', $radius)
-                ->orderBy('distance');
+                ', [$lat, $lng, $lat])
+                    ->having('distance', '<=', $radius)
+                    ->orderBy('distance');
             });
         }
 
         // Sort by rating or date
         $sortBy = $request->get('sort_by', 'created_at');
         $sortOrder = $request->get('sort_order', 'desc');
-        
+
         if ($sortBy === 'rating') {
             $query->orderBy('average_rating', $sortOrder);
         } else {

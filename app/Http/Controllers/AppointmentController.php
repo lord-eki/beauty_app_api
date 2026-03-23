@@ -3,11 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreAppointmentRequest;
-use App\Http\Requests\UpdateAppointmentRequest;
 use App\Http\Resources\AppointmentResource;
 use App\Models\Appointment;
 use App\Models\Service;
 use App\Models\ServiceStaff;
+use App\Services\CacheService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -44,33 +44,29 @@ class AppointmentController extends Controller
     public function businessAppointments(Request $request): JsonResponse
     {
         $businessProfile = $request->user()->businessProfile;
-
-        if (!$businessProfile) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No business profile found',
-            ], 404);
+        if (! $businessProfile) {
+            return response()->json(['success' => false, 'message' => 'No business profile found'], 404);
         }
 
         $query = Appointment::where('business_profile_id', $businessProfile->id)
-            ->with(['customer', 'service', 'staff', 'businessLocation']);
+            ->with([
+                'customer:id,first_name,last_name,phone,profile_image',
+                'service:id,name,duration_minutes,price_min',
+                'staff:id,name,phone',
+                'businessLocation:id,name,city,address',
+            ]);
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
-
         if ($request->filled('date')) {
-            $query->forDate($request->date);
+            $query->whereDate('appointment_date', $request->date);
         }
-
-        $appointments = $query->orderBy('appointment_date')
-            ->orderBy('start_time')
-            ->paginate(20);
 
         return response()->json([
             'success' => true,
-            'data' => AppointmentResource::collection($appointments),
-        ], 200);
+            'data' => AppointmentResource::collection($query->paginate(20)),
+        ]);
     }
 
     public function store(StoreAppointmentRequest $request): JsonResponse
@@ -85,8 +81,8 @@ class AppointmentController extends Controller
 
             if ($request->filled('staff_id')) {
                 $staff = ServiceStaff::findOrFail($request->staff_id);
-                
-                if (!$staff->isAvailable($request->appointment_date, $startTime, $endTime)) {
+
+                if (! $staff->isAvailable($request->appointment_date, $startTime, $endTime)) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Selected staff is not available at this time',
@@ -111,6 +107,12 @@ class AppointmentController extends Controller
 
             DB::commit();
 
+            CacheService::forgetAvailability(
+                $appointment->business_profile_id,
+                $appointment->appointment_date
+            );
+            CacheService::forgetBusinessStats($appointment->business_profile_id);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Appointment booked successfully',
@@ -119,10 +121,10 @@ class AppointmentController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to book appointment: ' . $e->getMessage(),
+                'message' => 'Failed to book appointment: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -136,7 +138,7 @@ class AppointmentController extends Controller
             ], 403);
         }
 
-        if (!$appointment->canBeCancelled()) {
+        if (! $appointment->canBeCancelled()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Cancellations must be made at least 24 hours in advance.',
@@ -160,7 +162,7 @@ class AppointmentController extends Controller
     {
         $businessProfile = $request->user()->businessProfile;
 
-        if (!$businessProfile || $appointment->business_profile_id !== $businessProfile->id) {
+        if (! $businessProfile || $appointment->business_profile_id !== $businessProfile->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',
@@ -172,7 +174,7 @@ class AppointmentController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Appointment confirmed successfully',
-            'data' => new AppointmentResource($appointment->load(['businessProfile' ,'service','staff'])),
+            'data' => new AppointmentResource($appointment->load(['businessProfile', 'service', 'staff'])),
         ], 200);
     }
 }
