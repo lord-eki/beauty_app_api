@@ -3,11 +3,6 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
-use App\Http\Resources\UserResource;
-use App\Http\Resources\BusinessLocationResource;
-use App\Http\Resources\ServiceResource;
-use App\Http\Resources\ProductResource;
-use App\Http\Resources\ReviewResource;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class BusinessProfileResource extends JsonResource
@@ -23,8 +18,8 @@ class BusinessProfileResource extends JsonResource
             'instagram' => $this->instagram,
             'facebook' => $this->facebook,
             'whatsapp' => $this->whatsapp,
-            'business_hours' => $this->business_hours,
-            'average_rating' => (float) $this->average_rating,
+            'business_hours' => is_array($this->business_hours) ? $this->business_hours : [],
+            'average_rating' => (float) ($this->average_rating ?? 0),
             'total_reviews' => $this->total_reviews,
             'is_verified' => $this->is_verified,
             'user' => new UserResource($this->whenLoaded('user')),
@@ -35,5 +30,5 @@ class BusinessProfileResource extends JsonResource
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];
-    } 
+    }
 }

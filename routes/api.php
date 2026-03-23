@@ -1,25 +1,24 @@
 <?php
 
-use App\Http\Controllers\MpesaTransactionController;
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Auth\AuthController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\CategoryController;
-use App\Http\Controllers\SearchController;
-use App\Http\Controllers\BusinessProfileController;
-use App\Http\Controllers\BusinessLocationController;
-use App\Http\Controllers\ServicesController;
-use App\Http\Controllers\ProductController;
-use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\AppointmentController;
-use App\Http\Controllers\OrderController;
-use App\Http\Controllers\SubscriptionController;
-use App\Http\Controllers\MpesaController;
+use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\BusinessLocationController;
+use App\Http\Controllers\BusinessProfileController;
+use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\MpesaTransactionController;
+use App\Http\Controllers\OrderController;
+use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PromotionController;
-use App\Http\Controllers\ServiceStaffController;
+use App\Http\Controllers\ReviewController;
+use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ServiceAvailabilityController;
+use App\Http\Controllers\ServicesController;
+use App\Http\Controllers\ServiceStaffController;
+use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\UserController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -32,6 +31,12 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/logout', [AuthController::class, 'logout']);
+        Route::post('/refresh', [AuthController::class, 'refresh']);
+        Route::get('/me', [AuthController::class, 'me']);
+    });
 });
 
 // MPesa callback — must be public (Safaricom posts here)
@@ -78,15 +83,6 @@ Route::get('/locations/nearby', [BusinessLocationController::class, 'nearby']);
 */
 
 Route::middleware('auth:sanctum')->group(function () {
-
-    /*
-    |-------------- AUTH & USER ------------------------------------------------
-    */
-    Route::prefix('auth')->group(function () {
-        Route::post('/logout', [AuthController::class, 'logout']);
-        Route::post('/refresh', [AuthController::class, 'refresh']);
-        Route::get('/me', [AuthController::class, 'me']);
-    });
 
     Route::prefix('user')->group(function () {
         Route::get('/profile', [UserController::class, 'show']);
@@ -163,7 +159,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // --- Subscription required below ---
         Route::middleware('subscription')->group(function () {
 
-            /*-- Services --*/
+            /* -- Services -- */
             Route::prefix('services')->group(function () {
                 Route::get('/', [ServicesController::class, 'index']);
                 Route::post('/', [ServicesController::class, 'store']);
@@ -174,7 +170,7 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::delete('/{service}/images/{imageIndex}', [ServicesController::class, 'deleteImage']);
             });
 
-            /*-- Products --*/
+            /* -- Products -- */
             Route::prefix('products')->group(function () {
                 Route::get('/', [ProductController::class, 'index']);
                 Route::post('/', [ProductController::class, 'store']);
@@ -185,7 +181,7 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);
             });
 
-            /*-- Inventory --*/
+            /* -- Inventory -- */
             Route::prefix('inventory')->group(function () {
                 Route::get('/', [InventoryController::class, 'index']);
                 Route::get('/low-stock', [InventoryController::class, 'lowStock']);
@@ -196,7 +192,7 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::put('/{product}', [InventoryController::class, 'update']);
             });
 
-            /*-- Staff --*/
+            /* -- Staff -- */
             Route::prefix('staff')->group(function () {
                 Route::get('/', [ServiceStaffController::class, 'index']);
                 Route::post('/', [ServiceStaffController::class, 'store']);
@@ -205,7 +201,7 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::delete('/{staff}', [ServiceStaffController::class, 'destroy']);
             });
 
-            /*-- Schedule / Availability --*/
+            /* -- Schedule / Availability -- */
             Route::prefix('schedule')->group(function () {
                 Route::get('/', [ServiceAvailabilityController::class, 'index']);
                 Route::post('/', [ServiceAvailabilityController::class, 'store']);
@@ -213,7 +209,7 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::delete('/{serviceAvailability}', [ServiceAvailabilityController::class, 'destroy']);
             });
 
-            /*-- Promotions --*/
+            /* -- Promotions -- */
             Route::prefix('promotions')->group(function () {
                 Route::get('/', [PromotionController::class, 'index']);
                 Route::post('/', [PromotionController::class, 'store']);
@@ -222,12 +218,12 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::delete('/{promotion}', [PromotionController::class, 'destroy']);
             });
 
-            /*-- Appointments (business view) --*/
+            /* -- Appointments (business view) -- */
             Route::get('/appointments', [AppointmentController::class, 'businessAppointments']);
             Route::post('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirm']);
             Route::post('/appointments/{appointment}/complete', [AppointmentController::class, 'complete']);
 
-            /*-- Orders (business view) --*/
+            /* -- Orders (business view) -- */
             Route::get('/orders', [OrderController::class, 'businessOrders']);
             Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
         });

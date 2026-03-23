@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -112,5 +113,29 @@ class AuthController extends Controller
             ],
         ], 200);
 
+    }
+
+    public function forgotPassword(Request $request)
+    {
+        $request->validate(['email' => 'required|email|exists:users']);
+
+        $status = Password::sendResetLink($request->only('email'));
+
+        return $status=== Password::RESET_LINK_SENT ? response()->json(['message' => 'Link sent'], 200) :  response()->json(['message' => 'Could not send link'], 400);
+
+
+    }
+
+    public function resetPassword(Request $request)
+    {
+        $request->validate(['']);
+
+        $status = Password::reset(
+            $request->only('email','password','password_confirmation','token'), function($user,$password){
+                $user->forceFill([ 'password' => bcrypt('password')])->save();
+            }
+        );
+
+        return response()->json(['message' => $status]);
     }
 }

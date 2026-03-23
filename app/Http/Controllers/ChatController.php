@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\MessageRead;
+use App\Events\NewChatMessage;
 use App\Models\BusinessProfile;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
@@ -150,7 +152,6 @@ class ChatController extends Controller
 
         $message->load('sender:id,first_name,last_name,profile_image');
 
-        // Broadcast via Reverb — toOthers() skips the sender's own socket
         broadcast(new NewChatMessage($message, $conversation))->toOthers();
 
         return $this->success($this->formatMessage($message), 'Message sent.', 201);
