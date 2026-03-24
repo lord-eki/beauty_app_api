@@ -105,7 +105,7 @@ class ChatController extends Controller
             ChatMessage::whereIn('id', $unreadIds)
                 ->update(['is_read' => true, 'read_at' => now()]);
 
-            broadcast(new MessageRead($conversation->id, $unreadIds->toArray()))->toOthers();
+            broadcast(new MessageRead($conversation->id, $unreadIds->toArray(),$request->user()->id))->toOthers();
         }
 
         return $this->success($messages->through(fn ($m) => $this->formatMessage($m)));
