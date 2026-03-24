@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Events\MessageRead;
 use App\Events\NewChatMessage;
+use App\Events\UserOnlineStatus;
 use App\Models\BusinessProfile;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
@@ -186,7 +187,7 @@ class ChatController extends Controller
         $message->update(['is_read' => true, 'read_at' => now()]);
 
         // Broadcast read receipt to the other participant
-        broadcast(new MessageRead($message))->toOthers();
+        broadcast(new MessageRead($message->conversation_id,[$message->id],$user->id))->toOthers();
 
         return $this->success(null, 'Message marked as read.');
     }
@@ -212,7 +213,6 @@ class ChatController extends Controller
             'status' => ['required', 'in:typing,online,offline'],
         ]);
 
-        //  Broadcast on the presence channel — toOthers() skips the caller
         broadcast(new UserOnlineStatus(
             $request->user(),
             $conversation->id,
