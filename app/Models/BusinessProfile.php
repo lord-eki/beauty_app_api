@@ -19,7 +19,7 @@ class BusinessProfile extends Model
 
     protected $casts = [
         'business_hours' => 'json',
-        'average_rating' => 'decimal',
+        'average_rating' => 'decimal:2',
         'total_reviews' => 'integer',
         'is_verified' => 'boolean',
         'verification_documents' => 'json'

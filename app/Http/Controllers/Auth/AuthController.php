@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Http\Resources\UserResource;
+use App\Models\BusinessProfile;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\ValidationException;
@@ -18,25 +20,45 @@ class AuthController extends Controller
     public function register(RegisterRequest $request): JsonResponse
     {
 
+        $user = DB::transaction(function () use ($request) {
 
-        $user = User::create([
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'first_name' => $request->first_name,
-            'last_name' => $request->last_name,
-            'user_type' => $request->user_type,
-            'phone' => $request->phone,
-            'is_active' => true,
-        ]);
+            $user = User::create([
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'first_name' => $request->first_name,
+                'last_name' => $request->last_name,
+                'user_type' => $request->user_type,
+                'phone' => $request->phone,
+                'is_active' => true,
+            ]);
+
+            if ($user->isProvider()) {
+                BusinessProfile::create([
+                    'user_id' => $user->id,
+                    'business_name' => $user->first_name."'s Business",
+                    'business_type' => 'services',
+                    'description' => null,
+                    'website' => null,
+                    'instagram' => null,
+                    'facebook' => null,
+                    'whatsapp' => $user->phone,
+                    'business_hours' => null,
+                    'average_rating' => 0,
+                    'total_reviews' => 0,
+                    'is_verified' => false,
+                ]);
+            }
+
+            return $user;
+        });
 
         $token = $user->createToken('auth_token')->plainTextToken;
-
 
         return response()->json([
             'success' => true,
             'message' => 'User registered successfully',
             'data' => [
-                'user' => new UserResource($user),
+                'user' => new UserResource($user->load('businessProfile')),
                 'token' => $token,
                 'token_type' => 'Bearer',
             ],
@@ -121,8 +143,7 @@ class AuthController extends Controller
 
         $status = Password::sendResetLink($request->only('email'));
 
-        return $status=== Password::RESET_LINK_SENT ? response()->json(['message' => 'Link sent'], 200) :  response()->json(['message' => 'Could not send link'], 400);
-
+        return $status === Password::RESET_LINK_SENT ? response()->json(['message' => 'Link sent'], 200) : response()->json(['message' => 'Could not send link'], 400);
 
     }
 
@@ -131,8 +152,8 @@ class AuthController extends Controller
         $request->validate(['']);
 
         $status = Password::reset(
-            $request->only('email','password','password_confirmation','token'), function($user,$password){
-                $user->forceFill([ 'password' => bcrypt('password')])->save();
+            $request->only('email', 'password', 'password_confirmation', 'token'), function ($user, $password) {
+                $user->forceFill(['password' => bcrypt('password')])->save();
             }
         );
 

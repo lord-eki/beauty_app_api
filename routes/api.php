@@ -62,7 +62,6 @@ Route::prefix('search')->group(function () {
 });
 
 Route::prefix('business')->group(function () {
-    Route::get('/{businessProfile}', [BusinessProfileController::class, 'showPublic']);
     Route::get('/{businessProfile}/services', [ServicesController::class, 'public']);
     Route::get('/{businessProfile}/products', [ProductController::class, 'public']);
     Route::get('/{businessProfile}/reviews', [ReviewController::class, 'index']);
@@ -71,6 +70,9 @@ Route::prefix('business')->group(function () {
     // Public: staff list and availability (customers need these to book)
     Route::get('/{businessProfile}/staff', [ServiceStaffController::class, 'publicList']);
     Route::get('/{businessProfile}/availability', [ServiceAvailabilityController::class, 'publicSlots']);
+
+    Route::get('/{businessProfile}', [BusinessProfileController::class, 'showPublic'])->whereNumber('businessProfile');
+
 });
 
 // Public: nearest locations search
