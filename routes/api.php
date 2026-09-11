@@ -27,19 +27,21 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('auth')->group(function () {
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
-    Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:6,1');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:6,1');
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:3,1');
+    Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:6,1');
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/refresh', [AuthController::class, 'refresh']);
         Route::get('/me', [AuthController::class, 'me']);
+        Route::post('/verify-phone', [AuthController::class, 'verifyPhone'])->middleware('throttle:6,1');
+        Route::post('/verify-phone/resend' , [AuthController::class, 'resendOtp'])->middleware('throttle:3,1');
     });
 });
 
-// MPesa callback — must be public (Safaricom posts here)
+// MPesa callback
 Route::post('/mpesa/callback', [MpesaTransactionController::class, 'callback']);
 
 /*

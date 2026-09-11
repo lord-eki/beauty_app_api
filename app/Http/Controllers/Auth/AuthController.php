@@ -7,14 +7,21 @@ use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\OtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class AuthController extends Controller
 {
+
+    public function __construct(private readonly OtpService $otpService) {}
+
     public function register(RegisterRequest $request): JsonResponse
     {
 
@@ -31,6 +38,11 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
+        try {
+            $this->otpService->generateAndSend($user);
+        } catch (Throwable $e) {
+            Log::warning('Failed to send registration OTP to {$user->phone}: {$e->gentMessage()}');
+        }
 
         return response()->json([
             'success' => true,
@@ -40,8 +52,7 @@ class AuthController extends Controller
                 'token' => $token,
                 'token_type' => 'Bearer',
             ],
-        ], 200);
-
+        ], 201);
     }
 
     public function login(LoginRequest $request): JsonResponse
@@ -50,7 +61,7 @@ class AuthController extends Controller
 
         if (! $user || ! Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
-                'email' => ['The provide credentials are incorrect'],
+                'email' => ['The provided credentials are incorrect.'],
             ]);
         }
 
@@ -76,7 +87,6 @@ class AuthController extends Controller
                 'token_type' => 'Bearer',
             ],
         ], 200);
-
     }
 
     public function logout(Request $request): JsonResponse
@@ -87,7 +97,6 @@ class AuthController extends Controller
             'success' => true,
             'message' => 'Logout successful',
         ], 200);
-
     }
 
     public function me(Request $request): JsonResponse
@@ -112,30 +121,84 @@ class AuthController extends Controller
                 'token_type' => 'Bearer',
             ],
         ], 200);
-
     }
 
-    public function forgotPassword(Request $request)
+    public function forgotPassword(Request $request): JsonResponse
     {
-        $request->validate(['email' => 'required|email|exists:users']);
+        $request->validate([
+            'email' => ['required', 'email'],
+        ]);
 
-        $status = Password::sendResetLink($request->only('email'));
+        // Always respond the same way whether or not the email exists,
+        // so this endpoint can't be used to enumerate registered accounts.
+        Password::sendResetLink($request->only('email'));
 
-        return $status=== Password::RESET_LINK_SENT ? response()->json(['message' => 'Link sent'], 200) :  response()->json(['message' => 'Could not send link'], 400);
-
-
+        return response()->json([
+            'success' => true,
+            'message' => 'If an account exists for that email, a password reset link has been sent.',
+        ], 200);
     }
 
-    public function resetPassword(Request $request)
+    public function resetPassword(Request $request): JsonResponse
     {
-        $request->validate(['']);
+        $request->validate([
+            'token' => ['required', 'string'],
+            'email' => ['required', 'email'],
+            'password' => ['required', 'confirmed', PasswordRule::min(8)->mixedCase()->numbers()],
+        ]);
 
         $status = Password::reset(
-            $request->only('email','password','password_confirmation','token'), function($user,$password){
-                $user->forceFill([ 'password' => bcrypt('password')])->save();
+            $request->only('email', 'password', 'password_confirmation', 'token'),
+            function ($user, $password) {
+                $user->forceFill([
+                    'password' => Hash::make($password),
+                ])->save();
+
+                // Invalidate existing sessions on this account after a reset.
+                $user->tokens()->delete();
             }
         );
 
-        return response()->json(['message' => $status]);
+        if ($status === Password::PASSWORD_RESET) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Password reset successfully. Please log in with your new password.',
+            ], 200);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => __($status),
+        ], 400);
     }
+
+
+    public function verifyPhone(Request $request):JsonResponse
+    {
+        $request->validate(['otp' => ['required','digits:6']]);
+        $user = $request->user();
+
+        if($user->hasVerifiedPhone()){
+            return response()->json(['success' => true,'message' => 'Phone number is already verified'],200);
+        }
+
+        if($this->otpService->verify($user, $request->otp)){
+            throw ValidationException::withMessages(['otp' => ['That code is invalid or is expired']]);
+        }
+
+        return response()->json(['success' => true ,'message' => 'Phone number verified successfully'],200);
+    }
+
+    public function resendOtp(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if($user->hasVerifiedPhone()){
+            return response()->json(['success' => true , 'message' => 'This phone number is already verified'],400);
+        }
+
+        $this->otpService->generateAndSend($user);
+
+        return response()->json(['success' => true , 'message' => 'A new verification code has been sent'],200);
+    }
+
 }
