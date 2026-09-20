@@ -31,13 +31,18 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:6,1');
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:3,1');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:6,1');
-
+ 
+    Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
+        ->middleware(['signed', 'throttle:20,1'])
+        ->name('verification.verify');
+ 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/refresh', [AuthController::class, 'refresh']);
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/verify-phone', [AuthController::class, 'verifyPhone'])->middleware('throttle:6,1');
-        Route::post('/verify-phone/resend' , [AuthController::class, 'resendOtp'])->middleware('throttle:3,1');
+        Route::post('/verify-phone/resend', [AuthController::class, 'resendOtp'])->middleware('throttle:3,1');
+        Route::post('/email/verification-notification', [AuthController::class, 'resendEmailVerification'])->middleware('throttle:3,1');
     });
 });
 
@@ -70,7 +75,7 @@ Route::prefix('business')->group(function () {
     Route::get('/{businessProfile}/reviews', [ReviewController::class, 'index']);
     Route::get('/{businessProfile}/promotions/active', [PromotionController::class, 'activeForBusiness']);
 
-    // Public: staff list and availability (customers need these to book)
+    // Public: staff list and availability 
     Route::get('/{businessProfile}/staff', [ServiceStaffController::class, 'publicList']);
     Route::get('/{businessProfile}/availability', [ServiceAvailabilityController::class, 'publicSlots']);
 });

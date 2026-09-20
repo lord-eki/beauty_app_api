@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 use Throwable;
 
 class AuthController extends Controller
@@ -42,6 +43,12 @@ class AuthController extends Controller
             $this->otpService->generateAndSend($user);
         } catch (Throwable $e) {
             Log::warning('Failed to send registration OTP to {$user->phone}: {$e->gentMessage()}');
+        }
+
+        try {
+            $user->sendEmailVerificationNotification();
+        } catch (\Throwable $e) {
+            Log::warning("Failed to send verification email to {$user->email}: {$e->getMessage()}");
         }
 
         return response()->json([
@@ -173,32 +180,79 @@ class AuthController extends Controller
     }
 
 
-    public function verifyPhone(Request $request):JsonResponse
+    public function verifyPhone(Request $request): JsonResponse
     {
-        $request->validate(['otp' => ['required','digits:6']]);
+        $request->validate(['otp' => ['required', 'digits:6']]);
         $user = $request->user();
 
-        if($user->hasVerifiedPhone()){
-            return response()->json(['success' => true,'message' => 'Phone number is already verified'],200);
+        if ($user->hasVerifiedPhone()) {
+            return response()->json(['success' => true, 'message' => 'Phone number is already verified'], 200);
         }
 
-        if($this->otpService->verify($user, $request->otp)){
+        if ($this->otpService->verify($user, $request->otp)) {
             throw ValidationException::withMessages(['otp' => ['That code is invalid or is expired']]);
         }
 
-        return response()->json(['success' => true ,'message' => 'Phone number verified successfully'],200);
+        return response()->json(['success' => true, 'message' => 'Phone number verified successfully'], 200);
     }
 
     public function resendOtp(Request $request): JsonResponse
     {
         $user = $request->user();
-        if($user->hasVerifiedPhone()){
-            return response()->json(['success' => true , 'message' => 'This phone number is already verified'],400);
+        if ($user->hasVerifiedPhone()) {
+            return response()->json(['success' => true, 'message' => 'This phone number is already verified'], 400);
         }
 
         $this->otpService->generateAndSend($user);
 
-        return response()->json(['success' => true , 'message' => 'A new verification code has been sent'],200);
+        return response()->json(['success' => true, 'message' => 'A new verification code has been sent'], 200);
     }
 
+    public function verifyEmail(Request $request, int $id, string $hash): View
+    {
+        $user = User::find($id);
+
+        if (! $user || ! hash_equals((string) $hash, sha1($user->getEmailForVerification()))) {
+            return view('auth.email-verify-result', [
+                'success' => false,
+                'heading' => 'Link invalid',
+                'message' => 'This verification link is invalid or has expired. Please request a new one from the app.',
+            ]);
+        }
+
+        if ($user->hasVerifiedEmail()) {
+            return view('auth.email-verify-result', [
+                'success' => true,
+                'heading' => 'Already verified',
+                'message' => 'Your email is already verified. You can return to the app.',
+            ]);
+        }
+
+        $user->markEmailAsVerified();
+
+        return view('auth.email-verify-result', [
+            'success' => true,
+            'heading' => 'Email verified',
+            'message' => 'Your email has been verified. You can return to the app and continue.',
+        ]);
+    }
+
+    public function resendEmailVerification(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($user->hasVerifiedEmail()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your email is already verified.',
+            ], 400);
+        }
+
+        $user->sendEmailVerificationNotification();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Verification email sent. Please check your inbox.',
+        ], 200);
+    }
 }

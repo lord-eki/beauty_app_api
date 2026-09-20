@@ -12,6 +12,7 @@ class ServiceStaffResource extends JsonResource
         return [
             'id'          => $this->id,
             'name'        => $this->name,
+            'business_profile_id'  => $this->business_profile_id
             'email'       => $this->email,
             'phone'       => $this->phone,
             'specialties' => $this->specialties ?? [],

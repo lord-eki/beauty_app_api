@@ -73,7 +73,7 @@ class BusinessProfileController extends Controller
             'instagram' => $request->instagram,
             'facebook' => $request->facebook,
             'whatsapp' => $request->whatsapp,
-            'business_hours' => $request->business_hours, // JSON field
+            'business_hours' => $request->business_hours, 
         ]);
 
         return response()->json([
