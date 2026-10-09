@@ -10,6 +10,7 @@ use App\Services\CacheService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class BusinessProfileController extends Controller
 {
@@ -19,6 +20,7 @@ class BusinessProfileController extends Controller
      */
     public function show(Request $request): JsonResponse
     {
+
         // Ensure user is a provider
         if (! $request->user()->isProvider()) {
             return response()->json([
@@ -28,6 +30,7 @@ class BusinessProfileController extends Controller
         }
 
         $businessProfile = $request->user()->businessProfile;
+
 
         if (! $businessProfile) {
             return response()->json([
@@ -73,7 +76,7 @@ class BusinessProfileController extends Controller
             'instagram' => $request->instagram,
             'facebook' => $request->facebook,
             'whatsapp' => $request->whatsapp,
-            'business_hours' => $request->business_hours, 
+            'business_hours' => $request->business_hours,
         ]);
 
         return response()->json([

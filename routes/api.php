@@ -68,7 +68,7 @@ Route::prefix('search')->group(function () {
     Route::get('/businesses', [SearchController::class, 'businesses']);
 });
 
-Route::prefix('business')->group(function () {
+Route::prefix('public/business')->group(function () {
     Route::get('/{businessProfile}', [BusinessProfileController::class, 'showPublic']);
     Route::get('/{businessProfile}/services', [ServicesController::class, 'public']);
     Route::get('/{businessProfile}/products', [ProductController::class, 'public']);
@@ -149,7 +149,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/profile', [BusinessProfileController::class, 'destroy']);
         Route::get('/statistics', [BusinessProfileController::class, 'statistics']);
 
-        // Locations — no subscription gate (needed at account setup)
+        // Locations
         Route::prefix('locations')->group(function () {
             Route::get('/', [BusinessLocationController::class, 'index']);
             Route::post('/', [BusinessLocationController::class, 'store']);

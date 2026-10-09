@@ -151,7 +151,7 @@ class ServicesController extends Controller
             'message' => 'Images uploaded successfully',
             'data' => [
                 'images' => array_map(fn($img) => asset('storage/' . $img), $images),
-                'service' => new ServiceResource($service->fresh()),
+                'service' => new ServiceResource($service->fresh('category')),
             ],
         ], 200);
     }

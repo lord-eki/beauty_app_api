@@ -15,6 +15,7 @@ class ServiceResource extends JsonResource
             'description' => $this->description,
             'price_min' => $this->price_min ? (float) $this->price_min : null,
             'price_max' => $this->price_max ? (float) $this->price_max : null,
+            'business_profile_id' => $this->business_profile_id,
             'duration_minutes' => $this->duration_minutes,
             'images' => $this->images ? array_map(fn($img) => asset('storage/' . $img), $this->images) : [],
             'is_home_service' => $this->is_home_service,

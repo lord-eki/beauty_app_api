@@ -73,6 +73,7 @@ class CacheService
 
     public static function forgetSearchResults(): void
     {
+        
         $redis = Cache::getRedis();
         $prefix = config('cache.prefix');
         $keys = $redis->keys("{$prefix}search:*");

@@ -43,7 +43,7 @@ class SubscriptionController extends Controller
     public function pay(Request $request): JsonResponse
     {
         $request->validate([
-            'billing_cycle' => ['required', 'in:monthly,yearly'],
+            // 'billing_cycle' => ['required', 'in:monthly,yearly'],
             'phone' => ['required', 'string', 'regex:/^(\+?254|0)[17]\d{8}$/'],
         ]);
 
@@ -60,7 +60,7 @@ class SubscriptionController extends Controller
         }
 
         $plans = config('mpesa.plans.basic');
-        $cycle = $request->billing_cycle;
+        $cycle = 'monthly';
         $amount = $plans[$cycle];
         $phone = $this->mpesa->formatPhone($request->phone);
 
