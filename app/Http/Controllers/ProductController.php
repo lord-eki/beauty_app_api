@@ -76,6 +76,25 @@ class ProductController extends Controller
     }
 
     /**
+     * Public product detail (customers browsing)
+     * GET /api/products/{product}
+     */
+    public function showPublic(Product $product): JsonResponse
+    {
+        if (! $product->is_active) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Product not found',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => new ProductResource($product->load(['category', 'businessProfile'])),
+        ], 200);
+    }
+
+    /**
      * Update a product
      * PUT /api/business/products/{product}
      */

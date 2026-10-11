@@ -35,6 +35,22 @@ class Product extends Model
         'stock_quantity'   => 'integer',
     ];
 
+    /**
+     * Any create/update/delete (controller, tinker, seeder...) clears the
+     * cached public search results so listings appear immediately.
+     */
+    protected static function booted(): void
+    {
+        $flush = function (self $model) {
+            \App\Services\CacheService::forgetSearchResults();
+            if ($model->business_profile_id) {
+                \App\Services\CacheService::forgetBusiness((int) $model->business_profile_id);
+            }
+        };
+        static::saved($flush);
+        static::deleted($flush);
+    }
+
     // ─── Relationships ────────────────────────────────────────────────────────
 
     public function businessProfile(): BelongsTo

@@ -74,6 +74,32 @@ class ServicesController extends Controller
     }
 
     /**
+     * Public service detail (customers browsing)
+     * GET /api/services/{service}
+     */
+    public function showPublic(Service $service): JsonResponse
+    {
+        if (! $service->is_active) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Service not found',
+            ], 404);
+        }
+
+        $service->load([
+            'category',
+            'businessProfile',
+            'businessProfile.locations',
+            'businessProfile.availabilities',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => new ServiceResource($service),
+        ], 200);
+    }
+
+    /**
      * Update a service
      */
     public function update(UpdateServicesRequest $request, Service $service): JsonResponse

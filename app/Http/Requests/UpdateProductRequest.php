@@ -11,7 +11,8 @@ class UpdateProductRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return false;
+        // Ownership is verified in ProductController::update()
+        return true;
     }
 
     /**
@@ -22,7 +23,16 @@ class UpdateProductRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            'category_id'      => ['sometimes', 'exists:categories,id'],
+            'name'             => ['sometimes', 'required', 'string', 'max:255'],
+            'description'      => ['sometimes', 'required', 'string', 'min:10', 'max:3000'],
+            'brand'            => ['nullable', 'string', 'max:100'],
+            'price'            => ['sometimes', 'required', 'numeric', 'min:0'],
+            'discounted_price' => ['nullable', 'numeric', 'min:0'],
+            'stock_quantity'   => ['sometimes', 'required', 'integer', 'min:0'],
+            'sku'              => ['nullable', 'string', 'max:100'],
+            'specifications'   => ['nullable', 'array'],
+            'is_active'        => ['boolean'],
         ];
     }
 }

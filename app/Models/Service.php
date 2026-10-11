@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\CacheService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -32,6 +33,22 @@ class Service extends Model
         'is_home_service' => 'boolean',
         'is_active' => 'boolean',
     ];
+
+    /**
+     * Any create/update/delete (controller, tinker, seeder...) clears the
+     * cached public search results so listings appear immediately.
+     */
+    protected static function booted(): void
+    {
+        $flush = function (self $model) {
+            CacheService::forgetSearchResults();
+            if ($model->business_profile_id) {
+                CacheService::forgetBusiness((int) $model->business_profile_id);
+            }
+        };
+        static::saved($flush);
+        static::deleted($flush);
+    }
 
     public function businessProfile(): BelongsTo
     {

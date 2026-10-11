@@ -5,7 +5,10 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreBusinessProfileRequest;
 use App\Http\Requests\UpdateBusinessProfileRequest;
 use App\Http\Resources\BusinessProfileResource;
+use App\Models\Appointment;
 use App\Models\BusinessProfile;
+use App\Models\Order;
+use App\Models\PaymentRecord;
 use App\Services\CacheService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,9 +42,124 @@ class BusinessProfileController extends Controller
             ], 404);
         }
 
+        $businessProfile->load('subscriptions');
+
         return response()->json([
             'success' => true,
             'data' => new BusinessProfileResource($businessProfile),
+        ], 200);
+    }
+
+    /**
+     * Dashboard analytics for the authenticated business
+     * GET /api/business/analytics   (alias: /api/business/statistics)
+     */
+    public function analytics(Request $request): JsonResponse
+    {
+        $profile = $request->user()->businessProfile;
+
+        if (! $profile) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business profile not found. Please create one first.',
+            ], 404);
+        }
+
+        $id        = $profile->id;
+        $thisStart = now()->startOfMonth();
+        $lastStart = now()->subMonthNoOverflow()->startOfMonth();
+        $lastEnd   = now()->subMonthNoOverflow()->endOfMonth();
+
+        // Revenue = payments the business has RECORDED (customers pay the
+        // business directly; the app only keeps the books).
+        $sumPayments = fn ($from, $to) => (float) PaymentRecord::where('business_profile_id', $id)
+            ->whereBetween('paid_at', [$from, $to])
+            ->sum('amount');
+
+        $revenueThisMonth = $sumPayments($thisStart, now());
+        $revenueLastMonth = $sumPayments($lastStart, $lastEnd);
+
+        $revenueByMethod = PaymentRecord::where('business_profile_id', $id)
+            ->where('paid_at', '>=', $thisStart)
+            ->selectRaw('method, SUM(amount) as amt')
+            ->groupBy('method')->pluck('amt', 'method')
+            ->map(fn ($v) => (float) $v);
+
+        $appointmentsThisMonth = Appointment::where('business_profile_id', $id)
+            ->where('status', '!=', 'cancelled')
+            ->whereBetween('appointment_date', [$thisStart->toDateString(), now()->endOfMonth()->toDateString()])
+            ->count();
+
+        $ordersThisMonth = Order::where('business_profile_id', $id)
+            ->where('status', '!=', 'cancelled')
+            ->where('created_at', '>=', $thisStart)
+            ->count();
+
+        // New customers = people who interacted this month but never before
+        $customersThisMonth = Appointment::where('business_profile_id', $id)
+            ->where('created_at', '>=', $thisStart)->pluck('customer_id')
+            ->merge(Order::where('business_profile_id', $id)
+                ->where('created_at', '>=', $thisStart)->pluck('customer_id'))
+            ->unique();
+
+        $returning = Appointment::where('business_profile_id', $id)
+            ->where('created_at', '<', $thisStart)
+            ->whereIn('customer_id', $customersThisMonth)->pluck('customer_id')
+            ->merge(Order::where('business_profile_id', $id)
+                ->where('created_at', '<', $thisStart)
+                ->whereIn('customer_id', $customersThisMonth)->pluck('customer_id'))
+            ->unique();
+
+        $newCustomers = $customersThisMonth->diff($returning)->count();
+
+        // Revenue per day, last 30 days (zero-filled so charts have no gaps)
+        $from = now()->subDays(29)->startOfDay();
+
+        $paidByDay = PaymentRecord::where('business_profile_id', $id)
+            ->where('paid_at', '>=', $from)
+            ->selectRaw('DATE(paid_at) as d, SUM(amount) as amt')
+            ->groupBy('d')->pluck('amt', 'd');
+
+        $revenueByDay = [];
+        for ($i = 0; $i < 30; $i++) {
+            $day = $from->copy()->addDays($i)->toDateString();
+            $revenueByDay[] = [
+                'date'   => $day,
+                'amount' => (float) ($paidByDay[$day] ?? 0),
+            ];
+        }
+
+        $popularServices = Appointment::query()
+            ->where('appointments.business_profile_id', $id)
+            ->whereNotIn('appointments.status', ['cancelled', 'no_show'])
+            ->join('services', 'services.id', '=', 'appointments.service_id')
+            ->groupBy('services.id', 'services.name')
+            ->selectRaw('services.id as service_id, services.name as service_name,
+                         COUNT(*) as booking_count,
+                         COALESCE(SUM(appointments.total_amount), 0) as revenue')
+            ->orderByDesc('booking_count')
+            ->limit(5)
+            ->get()
+            ->map(fn ($r) => [
+                'service_id'    => $r->service_id,
+                'service_name'  => $r->service_name,
+                'booking_count' => (int) $r->booking_count,
+                'revenue'       => (float) $r->revenue,
+            ])->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'total_revenue_this_month'      => $revenueThisMonth,
+                'total_revenue_last_month'      => $revenueLastMonth,
+                'total_appointments_this_month' => $appointmentsThisMonth,
+                'total_orders_this_month'       => $ordersThisMonth,
+                'new_customers_this_month'      => $newCustomers,
+                'average_rating'                => (float) ($profile->average_rating ?? 0),
+                'revenue_by_day'                => $revenueByDay,
+                'revenue_by_method'             => $revenueByMethod,
+                'popular_services'              => $popularServices,
+            ],
         ], 200);
     }
 
@@ -110,7 +228,7 @@ class BusinessProfileController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Business profile updated successfully',
-            'data' => new BusinessProfileResource($businessProfile->fresh()),
+            'data' => new BusinessProfileResource($businessProfile->fresh('subscriptions')),
         ], 200);
     }
 
@@ -188,7 +306,7 @@ class BusinessProfileController extends Controller
 
         // Search by name or description
         if ($request->has('query')) {
-            $searchTerm = $request->query;
+            $searchTerm = (string) $request->input('query');
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('business_name', 'LIKE', "%{$searchTerm}%")
                     ->orWhere('description', 'LIKE', "%{$searchTerm}%");

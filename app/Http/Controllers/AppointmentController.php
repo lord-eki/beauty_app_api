@@ -8,6 +8,8 @@ use App\Models\Appointment;
 use App\Models\Service;
 use App\Models\ServiceStaff;
 use App\Services\CacheService;
+use App\Services\PaymentRecorder;
+use Illuminate\Validation\Rule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -175,6 +177,132 @@ class AppointmentController extends Controller
             'success' => true,
             'message' => 'Appointment confirmed successfully',
             'data' => new AppointmentResource($appointment->load(['businessProfile', 'service', 'staff'])),
+        ], 200);
+    }
+
+    private const RELATIONS = ['businessProfile', 'service', 'staff', 'customer:id,first_name,last_name,phone', 'payments'];
+
+    /** The business that owns this appointment, if the user is that business. */
+    private function ownerProfile(Request $request, Appointment $appointment)
+    {
+        $profile = $request->user()->businessProfile;
+        return ($profile && $appointment->business_profile_id === $profile->id) ? $profile : null;
+    }
+
+    /**
+     * GET /api/appointments/{appointment}  (the customer or the business)
+     */
+    public function show(Request $request, Appointment $appointment): JsonResponse
+    {
+        if ($appointment->customer_id !== $request->user()->id && ! $this->ownerProfile($request, $appointment)) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => new AppointmentResource($appointment->load(self::RELATIONS)),
+        ], 200);
+    }
+
+    /**
+     * PUT /api/appointments/{appointment}
+     * - business: change status (+ business notes)
+     * - customer: edit their own notes
+     */
+    public function update(Request $request, Appointment $appointment): JsonResponse
+    {
+        if ($this->ownerProfile($request, $appointment)) {
+            $data = $request->validate([
+                'status'         => ['sometimes', Rule::in(['confirmed', 'in_progress', 'completed', 'cancelled', 'no_show'])],
+                'business_notes' => ['nullable', 'string', 'max:1000'],
+            ]);
+
+            if (($data['status'] ?? null) === 'cancelled') {
+                $data['cancelled_at'] = now();
+                $data['cancelled_by'] = $request->user()->id;
+            }
+
+            $appointment->update($data);
+        } elseif ($appointment->customer_id === $request->user()->id) {
+            $data = $request->validate(['customer_notes' => ['nullable', 'string', 'max:1000']]);
+            $appointment->update($data);
+        } else {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        CacheService::forgetSearchResults();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Appointment updated successfully',
+            'data' => new AppointmentResource($appointment->fresh(self::RELATIONS)),
+        ], 200);
+    }
+
+    /**
+     * POST /api/business/appointments/{appointment}/complete
+     */
+    public function complete(Request $request, Appointment $appointment): JsonResponse
+    {
+        if (! $this->ownerProfile($request, $appointment)) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        if (! in_array($appointment->status, ['confirmed', 'in_progress'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only confirmed appointments can be completed.',
+            ], 422);
+        }
+
+        $appointment->update(['status' => 'completed']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Appointment completed',
+            'data' => new AppointmentResource($appointment->fresh(self::RELATIONS)),
+        ], 200);
+    }
+
+    /**
+     * Record that the customer paid the business (after the service).
+     * POST /api/business/appointments/{appointment}/payment
+     */
+    public function recordPayment(Request $request, Appointment $appointment): JsonResponse
+    {
+        $profile = $this->ownerProfile($request, $appointment);
+        if (! $profile) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        if ($appointment->status !== 'completed') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Record the payment after the service has been completed.',
+            ], 422);
+        }
+
+        if ($appointment->payment_status === 'paid') {
+            return response()->json([
+                'success' => false,
+                'message' => 'This appointment is already marked as paid.',
+            ], 422);
+        }
+
+        $data = $request->validate([
+            'method'    => ['required', Rule::in(PaymentRecorder::METHODS)],
+            'amount'    => ['nullable', 'numeric', 'min:0.01'],
+            'reference' => ['nullable', 'string', 'max:100'],
+            'paid_at'   => ['nullable', 'date'],
+            'notes'     => ['nullable', 'string', 'max:500'],
+        ]);
+
+        PaymentRecorder::record($appointment, $profile->id, $data, $request->user()->id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment recorded',
+            'data' => new AppointmentResource($appointment->fresh(self::RELATIONS)),
         ], 200);
     }
 }

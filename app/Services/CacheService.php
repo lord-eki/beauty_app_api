@@ -38,7 +38,9 @@ class CacheService
 
     public static function rememberSearchResults(string $type, array $params, callable $callback)
     {
-        $key = "search:{$type}:" . md5(serialize($params));
+        // The version number is part of the key, so bumping it instantly
+        // orphans every cached search result (works on any cache driver).
+        $key = "search:{$type}:v" . self::searchVersion() . ':' . md5(serialize($params));
         return Cache::remember($key, 600, $callback);
     }
 
@@ -73,12 +75,12 @@ class CacheService
 
     public static function forgetSearchResults(): void
     {
-        
-        $redis = Cache::getRedis();
-        $prefix = config('cache.prefix');
-        $keys = $redis->keys("{$prefix}search:*");
-        if (!empty($keys)) {
-            $redis->del($keys);
-        }
+        Cache::add('search:version', 1);      
+        Cache::increment('search:version');   
+    }
+
+    private static function searchVersion(): int
+    {
+        return (int) Cache::get('search:version', 1);
     }
 }

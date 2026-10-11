@@ -16,13 +16,25 @@ class UpdateServicesRequest extends FormRequest
         return [
             'category_id' => ['sometimes', 'exists:categories,id'],
             'name' => ['sometimes', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
+            'description' => ['sometimes', 'required', 'string', 'min:10', 'max:3000'],
             'price_min' => ['nullable', 'numeric', 'min:0'],
             'price_max' => ['nullable', 'numeric', 'min:0', 'gte:price_min'],
             'duration_minutes' => ['nullable', 'integer', 'min:1'],
             'is_home_service' => ['boolean'],
             'is_active' => ['boolean'],
         ];
+    }
+
+
+    /** Older app builds sent a single `price`; map it to the range columns. */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('price') && ! $this->has('price_min')) {
+            $this->merge([
+                'price_min' => $this->input('price'),
+                'price_max' => $this->input('price_max', $this->input('price')),
+            ]);
+        }
     }
 
     public function messages(): array

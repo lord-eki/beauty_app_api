@@ -42,6 +42,11 @@ class BusinessProfile extends Model
         return $this->hasMany(Service::class);
     }
 
+    public function availabilities(): HasMany
+    {
+        return $this->hasMany(ServiceAvailability::class);
+    }
+
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);
@@ -93,7 +98,7 @@ class BusinessProfile extends Model
     {
         return $this->subscriptions()
             ->where('status', 'active')
-            ->where('end_date', '>=', now())
+            ->whereDate('end_date', '>=', today())
             ->exists();
     }
 

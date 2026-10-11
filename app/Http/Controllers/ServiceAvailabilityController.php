@@ -34,21 +34,16 @@ class ServiceAvailabilityController extends Controller
             ->get();
 
         // Group by day_of_week for easy frontend rendering
-        $grouped = $schedule->groupBy('day_of_week')
-            ->map(fn($slots) => ServiceAvailabilityResource::collection($slots));
-
         return response()->json([
             'success' => true,
-            'data'    => $grouped,
+            'data'    => ServiceAvailabilityResource::collection($schedule),
         ]);
     }
 
     /**
-     * Bulk-set schedule slots (replaces existing for same scope)
      * POST /api/business/schedule
      *
      * Send replace_location_id / replace_staff_id to scope what gets cleared.
-     * Omit both to replace the entire business schedule.
      */
     public function store(Request $request): JsonResponse
     {
@@ -61,8 +56,8 @@ class ServiceAvailabilityController extends Controller
         $data = $request->validate([
             'slots'                        => 'required|array|min:1',
             'slots.*.day_of_week'          => 'required|integer|between:0,6',
-            'slots.*.start_time'           => 'required|date_format:H:i',
-            'slots.*.end_time'             => 'required|date_format:H:i|after:slots.*.start_time',
+            'slots.*.start_time'           => 'required|date_format:H:i,H:i:s',
+            'slots.*.end_time'             => 'required|date_format:H:i,H:i:s|after:slots.*.start_time',
             'slots.*.is_available'         => 'nullable|boolean',
             'slots.*.business_location_id' => 'nullable|integer|exists:business_locations,id',
             'slots.*.staff_id'             => 'nullable|integer|exists:service_staff,id',
@@ -104,7 +99,7 @@ class ServiceAvailabilityController extends Controller
     }
 
     /**
-     * Update a single slot (e.g. toggle holiday closure)
+     * Update a single slot 
      * PUT /api/business/schedule/{availability}
      */
     public function update(Request $request, ServiceAvailability $availability): JsonResponse
@@ -113,8 +108,8 @@ class ServiceAvailabilityController extends Controller
 
         $data = $request->validate([
             'day_of_week'  => 'sometimes|required|integer|between:0,6',
-            'start_time'   => 'sometimes|required|date_format:H:i',
-            'end_time'     => 'sometimes|required|date_format:H:i',
+            'start_time'   => 'sometimes|required|date_format:H:i,H:i:s',
+            'end_time'     => 'sometimes|required|date_format:H:i,H:i:s',
             'is_available' => 'sometimes|required|boolean',
         ]);
 
@@ -160,7 +155,7 @@ class ServiceAvailabilityController extends Controller
         ]);
 
         $date      = Carbon::parse($request->date);
-        $dayOfWeek = $date->dayOfWeek; // 0 = Sunday … 6 = Saturday
+        $dayOfWeek = $date->dayOfWeek; 
 
         $slots = ServiceAvailability::where('business_profile_id', $businessProfile->id)
             ->where('day_of_week', $dayOfWeek)
@@ -206,7 +201,6 @@ class ServiceAvailabilityController extends Controller
         ]);
     }
 
-    // -------------------------------------------------------------------------
 
     private function authorizeSlot(Request $request, ServiceAvailability $availability): void
     {

@@ -6,6 +6,8 @@ use App\Http\Requests\StoreOrderRequest;
 use App\Http\Resources\OrderResource;
 use App\Models\Order;
 use App\Models\Product;
+use App\Services\PaymentRecorder;
+use Illuminate\Validation\Rule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +20,7 @@ class OrderController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Order::where('customer_id', $request->user()->id)
-            ->with(['items.product', 'businessProfile']);
+            ->with(['items.product', 'businessProfile', 'payments']);
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -47,7 +49,7 @@ class OrderController extends Controller
         }
 
         $query = Order::where('business_profile_id', $businessProfile->id)
-            ->with(['items.product', 'customer']);
+            ->with(['items.product', 'customer', 'payments']);
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -81,6 +83,7 @@ class OrderController extends Controller
                 $product = Product::findOrFail($item['product_id']);
                 
                 if (!$product->is_active) {
+                    DB::rollBack();
                     return response()->json([
                         'success' => false,
                         'message' => "Product {$product->name} is not available",
@@ -88,6 +91,7 @@ class OrderController extends Controller
                 }
 
                 if ($product->stock_quantity < $item['quantity']) {
+                    DB::rollBack();
                     return response()->json([
                         'success' => false,
                         'message' => "Insufficient stock for {$product->name}",
@@ -97,6 +101,7 @@ class OrderController extends Controller
                 if (!$businessProfileId) {
                     $businessProfileId = $product->business_profile_id;
                 } elseif ($businessProfileId !== $product->business_profile_id) {
+                    DB::rollBack();
                     return response()->json([
                         'success' => false,
                         'message' => 'All products must be from the same business',
@@ -124,7 +129,9 @@ class OrderController extends Controller
                 'total_amount' => $totalAmount,
                 'status' => 'pending',
                 'payment_status' => 'pending',
-                'payment_method' => $request->payment_method,
+                // The app does not take payment: the customer pays the seller
+                // after delivery/pickup and the seller records it afterwards.
+                'payment_method' => 'pay_on_delivery',
                 'delivery_type' => $request->delivery_type,
                 'delivery_address' => $request->delivery_address,
                 'pickup_location_id' => $request->pickup_location_id,
@@ -180,7 +187,7 @@ class OrderController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => new OrderResource($order->load(['items.product', 'businessProfile', 'customer'])),
+            'data' => new OrderResource($order->load(['items.product', 'businessProfile', 'customer', 'payments'])),
         ], 200);
     }
 
@@ -202,16 +209,74 @@ class OrderController extends Controller
             'status' => 'required|in:confirmed,processing,shipped,delivered,cancelled',
         ]);
 
-        $order->update(['status' => $request->status]);
-
-        if ($request->status === 'delivered') {
-            $order->update(['delivered_at' => now()]);
+        if (in_array($order->status, ['delivered', 'cancelled', 'refunded'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => "This order is already {$order->status}.",
+            ], 422);
         }
+
+        DB::transaction(function () use ($order, $request) {
+            if ($request->status === 'cancelled') {
+                foreach ($order->items as $item) {
+                    $item->product?->increment('stock_quantity', $item->quantity);
+                }
+            }
+
+            $order->update(['status' => $request->status]);
+
+            if ($request->status === 'delivered') {
+                $order->update(['delivered_at' => now()]);
+            }
+        });
 
         return response()->json([
             'success' => true,
             'message' => 'Order status updated successfully',
-            'data' => new OrderResource($order->fresh()),
+            'data' => new OrderResource($order->fresh(['items.product', 'customer', 'payments'])),
+        ], 200);
+    }
+
+    /**
+     * Record that the customer paid (business only, after delivery).
+     * POST /api/business/orders/{order}/payment
+     */
+    public function recordPayment(Request $request, Order $order): JsonResponse
+    {
+        $profile = $request->user()->businessProfile;
+
+        if (! $profile || $order->business_profile_id !== $profile->id) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        if ($order->status !== 'delivered') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Record the payment after the order has been delivered.',
+            ], 422);
+        }
+
+        if ($order->payment_status === 'paid') {
+            return response()->json([
+                'success' => false,
+                'message' => 'This order is already marked as paid.',
+            ], 422);
+        }
+
+        $data = $request->validate([
+            'method'    => ['required', Rule::in(PaymentRecorder::METHODS)],
+            'amount'    => ['nullable', 'numeric', 'min:0.01'],
+            'reference' => ['nullable', 'string', 'max:100'],
+            'paid_at'   => ['nullable', 'date'],
+            'notes'     => ['nullable', 'string', 'max:500'],
+        ]);
+
+        PaymentRecorder::record($order, $profile->id, $data, $request->user()->id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment recorded',
+            'data' => new OrderResource($order->fresh(['items.product', 'customer', 'payments'])),
         ], 200);
     }
 

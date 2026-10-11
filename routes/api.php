@@ -68,6 +68,9 @@ Route::prefix('search')->group(function () {
     Route::get('/businesses', [SearchController::class, 'businesses']);
 });
 
+Route::get('/products/{product}', [ProductController::class, 'showPublic']);
+Route::get('/services/{service}', [ServicesController::class, 'showPublic']);
+
 Route::prefix('public/business')->group(function () {
     Route::get('/{businessProfile}', [BusinessProfileController::class, 'showPublic']);
     Route::get('/{businessProfile}/services', [ServicesController::class, 'public']);
@@ -147,7 +150,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/profile', [BusinessProfileController::class, 'store']);
         Route::put('/profile', [BusinessProfileController::class, 'update']);
         Route::delete('/profile', [BusinessProfileController::class, 'destroy']);
-        Route::get('/statistics', [BusinessProfileController::class, 'statistics']);
+        Route::get('/analytics', [BusinessProfileController::class, 'analytics']);
+        Route::get('/statistics', [BusinessProfileController::class, 'analytics']); // alias
 
         // Locations
         Route::prefix('locations')->group(function () {
@@ -229,10 +233,12 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/appointments', [AppointmentController::class, 'businessAppointments']);
             Route::post('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirm']);
             Route::post('/appointments/{appointment}/complete', [AppointmentController::class, 'complete']);
+            Route::post('/appointments/{appointment}/payment', [AppointmentController::class, 'recordPayment']);
 
             /* -- Orders (business view) -- */
             Route::get('/orders', [OrderController::class, 'businessOrders']);
             Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
+            Route::post('/orders/{order}/payment', [OrderController::class, 'recordPayment']);
         });
     });
 

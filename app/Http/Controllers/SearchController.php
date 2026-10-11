@@ -11,6 +11,7 @@ use App\Models\Service;
 use App\Services\CacheService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class SearchController extends Controller
 {
@@ -83,10 +84,13 @@ class SearchController extends Controller
                     'services.duration_minutes',
                     'services.images',
                     'services.is_home_service',
+                    'services.is_active',
                     'services.created_at',
                 ])
                 ->with([
-                    'businessProfile:id,business_name,average_rating,is_verified',
+                    'businessProfile:id,business_name,business_type,average_rating,total_reviews,is_verified',
+                    'businessProfile.locations:id,business_profile_id,name,address,city,county,postal_code,latitude,longitude,is_primary,is_active',
+                    'businessProfile.availabilities:id,business_profile_id,day_of_week,start_time,end_time,is_available',
                     'category:id,name,slug',
                 ]);
 
@@ -95,7 +99,7 @@ class SearchController extends Controller
             // Falls back to LIKE only if search term is too short for FULLTEXT
             // ------------------------------------------------------------------
             if ($hasQuery) {
-                $term = trim($request->query);
+                $term = trim((string) $request->input('query'));
                 if (strlen($term) >= 3) {
                     $query->whereRaw(
                         'MATCH(services.name, services.description) AGAINST(? IN BOOLEAN MODE)',
@@ -144,7 +148,7 @@ class SearchController extends Controller
                     ->join('business_locations',
                         'business_locations.business_profile_id', '=', 'bp.id')
                     ->where('business_locations.is_active', true)
-                    ->addSelect(\DB::raw(
+                    ->addSelect(DB::raw(
                         str_replace('?', '?', self::GEO_SELECT)
                     ))
                     ->addBinding([$lat, $lng, $lat], 'select')
@@ -227,16 +231,19 @@ class SearchController extends Controller
                     'products.discounted_price',
                     'products.stock_quantity',
                     'products.images',
+                    'products.is_active',
                     'products.created_at',
                 ])
                 ->with([
-                    'businessProfile:id,business_name,average_rating,is_verified',
+                    'businessProfile:id,business_name,business_type,average_rating,total_reviews,is_verified',
+                    'businessProfile.locations:id,business_profile_id,name,address,city,county,postal_code,latitude,longitude,is_primary,is_active',
+                    'businessProfile.availabilities:id,business_profile_id,day_of_week,start_time,end_time,is_available',
                     'category:id,name,slug',
                 ]);
 
        
             if ($hasQuery) {
-                $term = trim($request->query);
+                $term = trim((string) $request->input('query'));
                 if (strlen($term) >= 3) {
                     $query->whereRaw(
                         'MATCH(products.name, products.description, products.brand) AGAINST(? IN BOOLEAN MODE)',
@@ -287,7 +294,7 @@ class SearchController extends Controller
                     ->join('business_locations',
                         'business_locations.business_profile_id', '=', 'bp.id')
                     ->where('business_locations.is_active', true)
-                    ->addSelect(\DB::raw(self::GEO_SELECT))
+                    ->addSelect(DB::raw(self::GEO_SELECT))
                     ->addBinding([$lat, $lng, $lat], 'select')
                     ->having('distance', '<=', $radius)
                     ->orderBy('distance');
@@ -381,7 +388,7 @@ class SearchController extends Controller
 
    
             if ($hasQuery) {
-                $term = trim($request->query);
+                $term = trim((string) $request->input('query'));
                 if (strlen($term) >= 3) {
                     $query->whereRaw(
                         'MATCH(business_profiles.business_name, business_profiles.description) AGAINST(? IN BOOLEAN MODE)',
@@ -426,7 +433,7 @@ class SearchController extends Controller
                         'bl_geo.business_profile_id', '=', 'business_profiles.id')
                     ->where('bl_geo.is_active', true)
                     ->where('bl_geo.is_primary', true) // one location per business in results
-                    ->addSelect(\DB::raw(
+                    ->addSelect(DB::raw(
                         '(6371 * acos(
                             cos(radians(?)) * cos(radians(bl_geo.latitude))
                             * cos(radians(bl_geo.longitude) - radians(?))

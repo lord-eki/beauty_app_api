@@ -11,10 +11,11 @@ class ServiceAvailabilityResource extends JsonResource
     {
         return [
             'id'           => $this->id,
+            'business_profile_id' => $this->business_profile_id,
             'day_of_week'  => $this->day_of_week,
-            'day_name'     => $this->day_name,        // via getDayNameAttribute()
-            'start_time'   => $this->start_time,
-            'end_time'     => $this->end_time,
+            'day_name'     => $this->day_name,     
+            'start_time'   => substr((string) $this->start_time, 0, 5),   
+            'end_time'     => substr((string) $this->end_time, 0, 5),
             'is_available' => $this->is_available,
 
             'location' => $this->whenLoaded('businessLocation', fn() => [

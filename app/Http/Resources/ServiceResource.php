@@ -11,6 +11,7 @@ class ServiceResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'category_id' => $this->category_id,
             'name' => $this->name,
             'description' => $this->description,
             'price_min' => $this->price_min ? (float) $this->price_min : null,
