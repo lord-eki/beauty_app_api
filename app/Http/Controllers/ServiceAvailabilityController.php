@@ -6,6 +6,8 @@ use App\Models\Appointment;
 use App\Models\BusinessProfile;
 use App\Models\ServiceAvailability;
 use App\Http\Resources\ServiceAvailabilityResource;
+use App\Models\Service;
+use App\Services\SlotGenerator;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,6 +36,7 @@ class ServiceAvailabilityController extends Controller
             ->get();
 
         // Group by day_of_week for easy frontend rendering
+        // Flat list (the Flutter app expects a JSON array, not a map by day)
         return response()->json([
             'success' => true,
             'data'    => ServiceAvailabilityResource::collection($schedule),
@@ -41,9 +44,11 @@ class ServiceAvailabilityController extends Controller
     }
 
     /**
+     * Bulk-set schedule slots (replaces existing for same scope)
      * POST /api/business/schedule
      *
      * Send replace_location_id / replace_staff_id to scope what gets cleared.
+     * Omit both to replace the entire business schedule.
      */
     public function store(Request $request): JsonResponse
     {
@@ -99,7 +104,7 @@ class ServiceAvailabilityController extends Controller
     }
 
     /**
-     * Update a single slot 
+     * Update a single slot (e.g. toggle holiday closure)
      * PUT /api/business/schedule/{availability}
      */
     public function update(Request $request, ServiceAvailability $availability): JsonResponse
@@ -154,53 +159,31 @@ class ServiceAvailabilityController extends Controller
             'location_id' => 'nullable|integer|exists:business_locations,id',
         ]);
 
-        $date      = Carbon::parse($request->date);
-        $dayOfWeek = $date->dayOfWeek; 
-
-        $slots = ServiceAvailability::where('business_profile_id', $businessProfile->id)
-            ->where('day_of_week', $dayOfWeek)
-            ->where('is_available', true)
-            ->when($request->filled('location_id'), fn($q) => $q->where('business_location_id', $request->location_id))
-            ->when($request->filled('staff_id'),    fn($q) => $q->where('staff_id', $request->staff_id))
-            ->get();
-
-        if ($slots->isEmpty()) {
-            return response()->json([
-                'success' => true,
-                'data'    => [],
-                'message' => 'No availability on this day.',
-            ]);
+        $date     = Carbon::parse($request->date);
+        $duration = 60;
+        if ($request->filled('service_id')) {
+            $duration = Service::find($request->service_id)?->duration_minutes ?? 60;
         }
 
-        // Fetch existing confirmed/pending appointments so we can show booked intervals
-        $booked = Appointment::where('business_profile_id', $businessProfile->id)
-            ->whereDate('appointment_date', $date)
-            ->whereIn('status', ['pending', 'confirmed', 'in_progress'])
-            ->when($request->filled('staff_id'),    fn($q) => $q->where('staff_id', $request->staff_id))
-            ->when($request->filled('location_id'), fn($q) => $q->where('business_location_id', $request->location_id))
-            ->get(['start_time', 'end_time', 'staff_id']);
-
-        $available = $slots->map(fn($slot) => [
-            'start_time'      => $slot->start_time,
-            'end_time'        => $slot->end_time,
-            'staff_id'        => $slot->staff_id,
-            'location_id'     => $slot->business_location_id,
-            'booked_intervals' => $booked
-                ->filter(fn($b) => $b->start_time >= $slot->start_time && $b->end_time <= $slot->end_time)
-                ->map(fn($b) => ['start' => $b->start_time, 'end' => $b->end_time])
-                ->values(),
-        ]);
+        $slots = SlotGenerator::forDay(
+            $businessProfile,
+            $date,
+            (int) $duration,
+            $request->filled('staff_id') ? (int) $request->staff_id : null,
+            $request->filled('location_id') ? (int) $request->location_id : null,
+        );
 
         return response()->json([
             'success' => true,
-            'data'    => [
-                'date'  => $date->toDateString(),
-                'day'   => $date->format('l'),
-                'slots' => $available,
-            ],
+            // Flat list of bookable slots — what the mobile app renders.
+            'data'    => $slots->values(),
+            'message' => $slots->isEmpty()
+                ? 'No times are available on ' . $date->format('l') . '.'
+                : null,
         ]);
     }
 
+    // -------------------------------------------------------------------------
 
     private function authorizeSlot(Request $request, ServiceAvailability $availability): void
     {

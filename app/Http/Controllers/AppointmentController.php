@@ -7,7 +7,10 @@ use App\Http\Resources\AppointmentResource;
 use App\Models\Appointment;
 use App\Models\Service;
 use App\Models\ServiceStaff;
+use App\Models\BusinessProfile;
 use App\Services\CacheService;
+use App\Services\SlotGenerator;
+use Carbon\Carbon;
 use App\Services\PaymentRecorder;
 use Illuminate\Validation\Rule;
 use Illuminate\Http\JsonResponse;
@@ -73,24 +76,33 @@ class AppointmentController extends Controller
 
     public function store(StoreAppointmentRequest $request): JsonResponse
     {
+        $service         = Service::findOrFail($request->service_id);
+        $startTime       = $request->start_time;
+        $durationMinutes = $service->duration_minutes ?? 60;
+        $endTime         = date('H:i', strtotime($startTime) + ($durationMinutes * 60));
+
+        // The chosen time must be a real, free slot (inside opening hours and
+        // not clashing with another booking).
+        $slots = SlotGenerator::forDay(
+            BusinessProfile::findOrFail($service->business_profile_id),
+            Carbon::parse($request->appointment_date),
+            (int) $durationMinutes,
+            $request->filled('staff_id') ? (int) $request->staff_id : null,
+            $request->filled('business_location_id') ? (int) $request->business_location_id : null,
+        );
+
+        $free = $slots->first(fn ($s) => $s['start_time'] === date('H:i', strtotime($startTime)) && $s['is_available']);
+
+        if (! $free) {
+            return response()->json([
+                'success' => false,
+                'message' => 'That time is no longer available. Please pick another slot.',
+            ], 422);
+        }
+
         DB::beginTransaction();
 
         try {
-            $service = Service::findOrFail($request->service_id);
-            $startTime = $request->start_time;
-            $durationMinutes = $service->duration_minutes ?? 60;
-            $endTime = date('H:i', strtotime($startTime) + ($durationMinutes * 60));
-
-            if ($request->filled('staff_id')) {
-                $staff = ServiceStaff::findOrFail($request->staff_id);
-
-                if (! $staff->isAvailable($request->appointment_date, $startTime, $endTime)) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Selected staff is not available at this time',
-                    ], 422);
-                }
-            }
 
             $appointment = Appointment::create([
                 'customer_id' => $request->user()->id,
