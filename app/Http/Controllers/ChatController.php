@@ -10,6 +10,7 @@ use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class ChatController extends Controller
 {
@@ -27,17 +28,24 @@ class ChatController extends Controller
             'customer:id,first_name,last_name,profile_image',
             'provider:id,first_name,last_name,profile_image',
             'businessProfile:id,business_name',
-            'messages' => fn ($q) => $q->latest('created_at')->limit(1),
+            'lastMessage',
         ])
+            // unread = messages from the other person that I haven't read yet
+            ->withCount(['messages as unread_count' => fn ($q) => $q
+                ->where('sender_id', '!=', $user->id)
+                ->where('is_read', false)])
             ->where(function ($q) use ($user) {
                 $q->where('customer_id', $user->id)
                     ->orWhere('provider_id', $user->id);
             })
             ->where('status', '!=', 'blocked')
-            ->orderByDesc('last_message_at')
-            ->paginate(20);
+            ->orderByRaw('COALESCE(last_message_at, created_at) DESC')
+            ->get();
 
-        return $this->success($conversations->through(fn ($c) => $this->formatConversation($c, $user->id)));
+        // A plain list (not a paginator object) — that is what the app reads.
+        return $this->success(
+            $conversations->map(fn ($c) => $this->formatConversation($c, $user->id))->values()
+        );
     }
 
     /*
@@ -73,7 +81,9 @@ class ChatController extends Controller
             'customer:id,first_name,last_name,profile_image',
             'provider:id,first_name,last_name,profile_image',
             'businessProfile:id,business_name',
+            'lastMessage',
         ]);
+        $conversation->unread_count = 0;
 
         return $this->success($this->formatConversation($conversation, $customer->id), 'Conversation ready.', 201);
     }
@@ -87,29 +97,40 @@ class ChatController extends Controller
     */
     public function messages(Request $request, ChatConversation $conversation): JsonResponse
     {
-        $this->authorizeConversation($request->user(), $conversation);
+        $user = $request->user();
+        $this->authorizeConversation($user, $conversation);
 
-        $messages = ChatMessage::where('conversation_id', $conversation->id)
-            ->with('sender:id,first_name,last_name,profile_image')
-            ->select(['id', 'conversation_id', 'sender_id', 'message_type', 'content',
-                'file_url', 'file_name', 'is_read', 'read_at', 'created_at'])
-            ->orderByDesc('created_at')
-            ->paginate(30);
+        $query = ChatMessage::where('conversation_id', $conversation->id)
+            ->with('sender:id,first_name,last_name,profile_image');
 
-        // Single bulk update instead of a loop
+        if ($request->filled('after_id')) {
+            // Polling: only what arrived since the last message the app has.
+            $messages = $query->where('id', '>', (int) $request->after_id)
+                ->orderBy('id')->limit(200)->get();
+        } else {
+            // First load / older history: newest N, returned oldest-first.
+            $limit = min(max((int) $request->input('limit', 50), 1), 100);
+            if ($request->filled('before_id')) {
+                $query->where('id', '<', (int) $request->before_id);
+            }
+            $messages = $query->orderByDesc('id')->limit($limit)->get()->reverse()->values();
+        }
+
+        // Opening the chat = reading what the other person sent.
         $unreadIds = ChatMessage::where('conversation_id', $conversation->id)
-            ->where('sender_id', '!=', $request->user()->id)
+            ->where('sender_id', '!=', $user->id)
             ->where('is_read', false)
             ->pluck('id');
 
         if ($unreadIds->isNotEmpty()) {
-            ChatMessage::whereIn('id', $unreadIds)
-                ->update(['is_read' => true, 'read_at' => now()]);
+            ChatMessage::whereIn('id', $unreadIds)->update(['is_read' => true, 'read_at' => now()]);
 
-            broadcast(new MessageRead($conversation->id, $unreadIds->toArray(),$request->user()->id))->toOthers();
+            $this->safeBroadcast(fn () => broadcast(
+                new MessageRead($conversation->id, $unreadIds->toArray(), $user->id)
+            )->toOthers());
         }
 
-        return $this->success($messages->through(fn ($m) => $this->formatMessage($m)));
+        return $this->success($messages->map(fn ($m) => $this->formatMessage($m))->values());
     }
 
     /*
@@ -154,11 +175,17 @@ class ChatController extends Controller
             'is_read' => false,
         ]);
 
+        // The model has no automatic timestamps; reload so created_at (set by
+        // the database default) is present in the response.
+        $message->refresh();
+
         $conversation->update(['last_message_at' => now()]);
 
         $message->load('sender:id,first_name,last_name,profile_image');
 
-        broadcast(new NewChatMessage($message, $conversation))->toOthers();
+        // Real-time push is optional: if no websocket server is running,
+        // sending must still succeed (the app polls for new messages).
+        $this->safeBroadcast(fn () => broadcast(new NewChatMessage($message, $conversation))->toOthers());
 
         return $this->success($this->formatMessage($message), 'Message sent.', 201);
     }
@@ -187,7 +214,7 @@ class ChatController extends Controller
         $message->update(['is_read' => true, 'read_at' => now()]);
 
         // Broadcast read receipt to the other participant
-        broadcast(new MessageRead($message->conversation_id,[$message->id],$user->id))->toOthers();
+        $this->safeBroadcast(fn () => broadcast(new MessageRead($message->conversation_id, [$message->id], $user->id))->toOthers());
 
         return $this->success(null, 'Message marked as read.');
     }
@@ -213,11 +240,11 @@ class ChatController extends Controller
             'status' => ['required', 'in:typing,online,offline'],
         ]);
 
-        broadcast(new UserOnlineStatus(
+        $this->safeBroadcast(fn () => broadcast(new UserOnlineStatus(
             $request->user(),
             $conversation->id,
             $request->status
-        ))->toOthers();
+        ))->toOthers());
 
         return $this->success(null, 'Status broadcast.');
     }
@@ -250,50 +277,81 @@ class ChatController extends Controller
 
     private function formatConversation(ChatConversation $c, int $authUserId): array
     {
-        $lastMessage = $c->messages->first();
+        $last       = $c->lastMessage;
         $isCustomer = $authUserId === $c->customer_id;
         $otherParty = $isCustomer ? $c->provider : $c->customer;
 
+        $customerName = trim(($c->customer?->first_name ?? '') . ' ' . ($c->customer?->last_name ?? ''));
+        $businessName = $c->businessProfile?->business_name;
+
         return [
-            'id' => $c->id,
-            'status' => $c->status,
+            'id'                  => $c->id,
+            'status'              => $c->status,
+            'customer_id'         => $c->customer_id,
+            'provider_id'         => $c->provider_id,
+            'business_profile_id' => $c->business_profile_id,
+            'business_name'       => $businessName,
+            'customer_name'       => $customerName,
+            // What the OTHER side should see as the chat's title/avatar:
+            // customers see the business, the business sees the customer.
+            'title'               => $isCustomer ? ($businessName ?: trim(($otherParty?->first_name ?? '') . ' ' . ($otherParty?->last_name ?? ''))) : $customerName,
+            'avatar'              => $otherParty?->profile_image,
+            'unread_count'        => (int) ($c->unread_count ?? 0),
             'business' => [
-                'id' => $c->businessProfile?->id,
-                'name' => $c->businessProfile?->business_name,
+                'id'   => $c->businessProfile?->id,
+                'name' => $businessName,
             ],
             'other_party' => [
-                'id' => $otherParty?->id,
-                'name' => trim(($otherParty?->first_name ?? '').' '.($otherParty?->last_name ?? '')),
+                'id'            => $otherParty?->id,
+                'name'          => trim(($otherParty?->first_name ?? '') . ' ' . ($otherParty?->last_name ?? '')),
                 'profile_image' => $otherParty?->profile_image,
             ],
-            'last_message' => $lastMessage ? [
-                'content' => $lastMessage->content,
-                'type' => $lastMessage->message_type,
-                'created_at' => $lastMessage->created_at?->toIso8601String(),
-                'is_mine' => $lastMessage->sender_id === $authUserId,
+            'last_message' => $last ? [
+                'id'              => $last->id,
+                'conversation_id' => $last->conversation_id,
+                'sender_id'       => $last->sender_id,
+                'message_type'    => $last->message_type,
+                'content'         => $last->content,
+                'file_url'        => $last->file_url,
+                'file_name'       => $last->file_name,
+                'is_read'         => (bool) $last->is_read,
+                'created_at'      => $last->created_at?->toIso8601String(),
+                'is_mine'         => $last->sender_id === $authUserId,
             ] : null,
             'last_message_at' => $c->last_message_at?->toIso8601String(),
-            'created_at' => $c->created_at?->toIso8601String(),
+            'created_at'      => $c->created_at?->toIso8601String(),
         ];
     }
 
     private function formatMessage(ChatMessage $m): array
     {
         return [
-            'id' => $m->id,
+            'id'              => $m->id,
+            'conversation_id' => $m->conversation_id,
+            'sender_id'       => $m->sender_id,
             'sender' => [
-                'id' => $m->sender?->id,
-                'name' => trim(($m->sender?->first_name ?? '').' '.($m->sender?->last_name ?? '')),
+                'id'            => $m->sender?->id,
+                'name'          => trim(($m->sender?->first_name ?? '') . ' ' . ($m->sender?->last_name ?? '')),
                 'profile_image' => $m->sender?->profile_image,
             ],
             'message_type' => $m->message_type,
-            'content' => $m->content,
-            'file_url' => $m->file_url,
-            'file_name' => $m->file_name,
-            'is_read' => $m->is_read,
-            'read_at' => $m->read_at?->toIso8601String(),
-            'created_at' => $m->created_at?->toIso8601String(),
+            'content'      => $m->content,
+            'file_url'     => $m->file_url,
+            'file_name'    => $m->file_name,
+            'is_read'      => (bool) $m->is_read,
+            'read_at'      => $m->read_at?->toIso8601String(),
+            'created_at'   => $m->created_at?->toIso8601String(),
         ];
+    }
+
+    /** Broadcasting must never break the request when no websocket server is running. */
+    private function safeBroadcast(callable $fn): void
+    {
+        try {
+            $fn();
+        } catch (\Throwable $e) {
+            Log::warning('Chat broadcast skipped: ' . $e->getMessage());
+        }
     }
 
     private function success(mixed $data, string $message = 'Success', int $status = 200): JsonResponse
