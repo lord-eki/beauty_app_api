@@ -23,21 +23,37 @@ class SubscriptionController extends Controller
 
         $subscription = Subscription::where('business_profile_id', $business->id)->orderByDesc('created_at')->first();
 
-        if (! $subscription) {
-            return $this->success([
-                'has_subscription' => false,
-                'subscription' => null,
-            ]);
-        }
-
-        if ($subscription->isExpired() && $subscription->status === 'active') {
+        if ($subscription && $subscription->isExpired() && $subscription->status === 'active') {
             $subscription->update(['status' => 'expired']);
         }
 
+        $hasActive = $business->hasActiveSubscription();
+
         return $this->success([
-            'has_subscription' => $subscription->isActive(),
-            'subscription' => $this->formatSubscription($subscription),
+            'has_subscription' => $hasActive,
+            'subscription'     => $subscription ? $this->formatSubscription($subscription) : null,
+            'plan'             => [
+                'name'    => config('subscription.plans.basic.name'),
+                'monthly' => (float) config('subscription.plans.basic.monthly'),
+                'yearly'  => (float) config('subscription.plans.basic.yearly'),
+            ],
+            // Free tier: how many listings (services + products) are left
+            'listing_quota'    => $this->quota($business, $hasActive),
         ]);
+    }
+
+    private function quota($business, bool $hasActive): array
+    {
+        $limit = (int) config('subscription.free_listing_limit', 2);
+        $used  = $business->listingCount();
+
+        return [
+            'free_limit'        => $limit,
+            'used'              => $used,
+            'remaining'         => $hasActive ? null : max($limit - $used, 0),
+            'unlimited'         => $hasActive,
+            'can_add'           => $hasActive || $used < $limit,
+        ];
     }
 
     public function pay(Request $request): JsonResponse
@@ -59,7 +75,7 @@ class SubscriptionController extends Controller
             return $this->error('You already have an active subscription. It expires on '.$active->end_date->format('d M Y').'.', 422);
         }
 
-        $plans = config('mpesa.plans.basic');
+        $plans = config('subscription.plans.basic');
         $cycle = 'monthly';
         $amount = $plans[$cycle];
         $phone = $this->mpesa->formatPhone($request->phone);

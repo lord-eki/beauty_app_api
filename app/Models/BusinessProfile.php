@@ -42,6 +42,12 @@ class BusinessProfile extends Model
         return $this->hasMany(Service::class);
     }
 
+    /** Services + products this business has published (counts toward the free limit). */
+    public function listingCount(): int
+    {
+        return $this->services()->count() + $this->products()->count();
+    }
+
     public function availabilities(): HasMany
     {
         return $this->hasMany(ServiceAvailability::class);
@@ -82,18 +88,18 @@ class BusinessProfile extends Model
         return $this->hasMany(Order::class);
     }
 
-    // Scopes
+
     public function scopeVerified($query)
     {
         return $query->where('is_verified', true);
     }
 
-    public function scopeByType($query, $type)
+    public function scopeByType($query, string $type)
     {
         return $query->where('business_type', $type);
     }
 
-    // Helper methods
+
     public function hasActiveSubscription(): bool
     {
         return $this->subscriptions()

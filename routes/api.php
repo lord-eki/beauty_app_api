@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AppointmentController;
+use App\Http\Middleware\EnforceListingQuota;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\BusinessLocationController;
 use App\Http\Controllers\BusinessProfileController;
@@ -167,30 +168,53 @@ Route::middleware('auth:sanctum')->group(function () {
             });
         });
 
-        // --- Subscription required below ---
+        // ── Core tools: available to every business (free tier) ──────────────
+        // Creating a service/product is limited to the free quota unless the
+        // business has an active subscription (EnforceListingQuota).
+
+        /* -- Services -- */
+        Route::prefix('services')->group(function () {
+            Route::get('/', [ServicesController::class, 'index']);
+            Route::post('/', [ServicesController::class, 'store'])->middleware(EnforceListingQuota::class);
+            Route::get('/{service}', [ServicesController::class, 'show']);
+            Route::put('/{service}', [ServicesController::class, 'update']);
+            Route::delete('/{service}', [ServicesController::class, 'destroy']);
+            Route::post('/{service}/images', [ServicesController::class, 'uploadImages']);
+            Route::delete('/{service}/images/{imageIndex}', [ServicesController::class, 'deleteImage']);
+        });
+
+        /* -- Products -- */
+        Route::prefix('products')->group(function () {
+            Route::get('/', [ProductController::class, 'index']);
+            Route::post('/', [ProductController::class, 'store'])->middleware(EnforceListingQuota::class);
+            Route::get('/{product}', [ProductController::class, 'show']);
+            Route::put('/{product}', [ProductController::class, 'update']);
+            Route::delete('/{product}', [ProductController::class, 'destroy']);
+            Route::post('/{product}/images', [ProductController::class, 'uploadImages']);
+            Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);
+        });
+
+        /* -- Schedule / Availability -- */
+        Route::prefix('schedule')->group(function () {
+            Route::get('/', [ServiceAvailabilityController::class, 'index']);
+            Route::post('/', [ServiceAvailabilityController::class, 'store']);
+            Route::put('/{serviceAvailability}', [ServiceAvailabilityController::class, 'update']);
+            Route::delete('/{serviceAvailability}', [ServiceAvailabilityController::class, 'destroy']);
+        });
+
+        /* -- Appointments (business view) — a free business must always see its bookings -- */
+        Route::get('/appointments', [AppointmentController::class, 'businessAppointments']);
+        Route::post('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirm']);
+        Route::post('/appointments/{appointment}/complete', [AppointmentController::class, 'complete']);
+        Route::post('/appointments/{appointment}/payment', [AppointmentController::class, 'recordPayment']);
+
+        /* -- Orders (business view) -- */
+        Route::get('/orders', [OrderController::class, 'businessOrders']);
+        Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
+        Route::post('/orders/{order}/payment', [OrderController::class, 'recordPayment']);
+
+        // ── Premium tools: subscription required ───────────────────────────────
         Route::middleware('subscription')->group(function () {
-
-            /* -- Services -- */
-            Route::prefix('services')->group(function () {
-                Route::get('/', [ServicesController::class, 'index']);
-                Route::post('/', [ServicesController::class, 'store']);
-                Route::get('/{service}', [ServicesController::class, 'show']);
-                Route::put('/{service}', [ServicesController::class, 'update']);
-                Route::delete('/{service}', [ServicesController::class, 'destroy']);
-                Route::post('/{service}/images', [ServicesController::class, 'uploadImages']);
-                Route::delete('/{service}/images/{imageIndex}', [ServicesController::class, 'deleteImage']);
-            });
-
-            /* -- Products -- */
-            Route::prefix('products')->group(function () {
-                Route::get('/', [ProductController::class, 'index']);
-                Route::post('/', [ProductController::class, 'store']);
-                Route::get('/{product}', [ProductController::class, 'show']);
-                Route::put('/{product}', [ProductController::class, 'update']);
-                Route::delete('/{product}', [ProductController::class, 'destroy']);
-                Route::post('/{product}/images', [ProductController::class, 'uploadImages']);
-                Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);
-            });
 
             /* -- Inventory -- */
             Route::prefix('inventory')->group(function () {
@@ -212,14 +236,6 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::delete('/{staff}', [ServiceStaffController::class, 'destroy']);
             });
 
-            /* -- Schedule / Availability -- */
-            Route::prefix('schedule')->group(function () {
-                Route::get('/', [ServiceAvailabilityController::class, 'index']);
-                Route::post('/', [ServiceAvailabilityController::class, 'store']);
-                Route::put('/{serviceAvailability}', [ServiceAvailabilityController::class, 'update']);
-                Route::delete('/{serviceAvailability}', [ServiceAvailabilityController::class, 'destroy']);
-            });
-
             /* -- Promotions -- */
             Route::prefix('promotions')->group(function () {
                 Route::get('/', [PromotionController::class, 'index']);
@@ -228,17 +244,6 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::put('/{promotion}', [PromotionController::class, 'update']);
                 Route::delete('/{promotion}', [PromotionController::class, 'destroy']);
             });
-
-            /* -- Appointments (business view) -- */
-            Route::get('/appointments', [AppointmentController::class, 'businessAppointments']);
-            Route::post('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirm']);
-            Route::post('/appointments/{appointment}/complete', [AppointmentController::class, 'complete']);
-            Route::post('/appointments/{appointment}/payment', [AppointmentController::class, 'recordPayment']);
-
-            /* -- Orders (business view) -- */
-            Route::get('/orders', [OrderController::class, 'businessOrders']);
-            Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
-            Route::post('/orders/{order}/payment', [OrderController::class, 'recordPayment']);
         });
     });
 

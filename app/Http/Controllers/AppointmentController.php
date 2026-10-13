@@ -56,6 +56,7 @@ class AppointmentController extends Controller
         $query = Appointment::where('business_profile_id', $businessProfile->id)
             ->with([
                 'customer:id,first_name,last_name,phone,profile_image',
+                'businessProfile:id,business_name',
                 'service:id,name,duration_minutes,price_min',
                 'staff:id,name,phone',
                 'businessLocation:id,name,city,address',

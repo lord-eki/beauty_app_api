@@ -10,11 +10,5 @@ return [
     'callback_url'    => env('MPESA_CALLBACK_URL', ''),         
 
 
-    'plans' => [
-        'basic' => [
-            'name'    => 'Basic',
-            'monthly' => 479.00,
-            'yearly'  => 4790.00,   
-        ],
-    ],
+
 ];
