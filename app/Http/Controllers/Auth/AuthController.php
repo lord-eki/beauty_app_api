@@ -136,8 +136,6 @@ class AuthController extends Controller
             'email' => ['required', 'email'],
         ]);
 
-        // Always respond the same way whether or not the email exists,
-        // so this endpoint can't be used to enumerate registered accounts.
         Password::sendResetLink($request->only('email'));
 
         return response()->json([

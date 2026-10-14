@@ -25,6 +25,7 @@ class ProductResource extends JsonResource
             'images' => $this->images ? array_map(fn($img) => asset('storage/' . $img), $this->images) : [],
             'specifications' => $this->specifications,
             'is_active' => $this->is_active,
+            'is_boosted' => (bool)($this->resource->getAttributes()['is_boosted'] ?? false),
             'category' => new CategoryResource($this->whenLoaded('category')),
             'business_profile' => new BusinessProfileResource($this->whenLoaded('businessProfile')),
             'created_at' => $this->created_at?->toISOString(),

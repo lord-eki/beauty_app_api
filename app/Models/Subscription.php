@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\CacheService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -29,6 +30,15 @@ class Subscription extends Model
         'start_date' => 'date',
         'end_date' => 'date',
     ];
+
+
+    protected static function booted(): void
+    {
+        $flush = fn () => CacheService::forgetSearchResults();
+        static::saved($flush);
+        static::deleted($flush);
+    }
+
 
     public function businessProfile(): BelongsTo
     {

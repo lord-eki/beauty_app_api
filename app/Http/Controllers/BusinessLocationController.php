@@ -207,7 +207,7 @@ class BusinessLocationController extends Controller
         $staff = ServiceStaff::query()
             ->join(
                 'service_availabilities',
-                'service_staff.id', '=', 'service_availabilities.staff_id'  // fixed
+                'service_staff.id', '=', 'service_availabilities.staff_id'  
             )
             ->where('service_availabilities.business_location_id', $businessLocation->id)
             ->where('service_staff.is_active', true)

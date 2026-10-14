@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Boostable;
 use App\Services\CacheService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Service extends Model
 {
     /** @use HasFactory<\Database\Factories\ServicesFactory> */
-    use HasFactory;
+    use HasFactory,Boostable;
 
     protected $fillable = [
         'business_profile_id',

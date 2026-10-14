@@ -24,7 +24,6 @@ class BusinessProfileController extends Controller
     public function show(Request $request): JsonResponse
     {
 
-        // Ensure user is a provider
         if (! $request->user()->isProvider()) {
             return response()->json([
                 'success' => false,
@@ -70,8 +69,6 @@ class BusinessProfileController extends Controller
         $lastStart = now()->subMonthNoOverflow()->startOfMonth();
         $lastEnd   = now()->subMonthNoOverflow()->endOfMonth();
 
-        // Revenue = payments the business has RECORDED (customers pay the
-        // business directly; the app only keeps the books).
         $sumPayments = fn ($from, $to) => (float) PaymentRecord::where('business_profile_id', $id)
             ->whereBetween('paid_at', [$from, $to])
             ->sum('amount');
@@ -95,7 +92,7 @@ class BusinessProfileController extends Controller
             ->where('created_at', '>=', $thisStart)
             ->count();
 
-        // New customers = people who interacted this month but never before
+        
         $customersThisMonth = Appointment::where('business_profile_id', $id)
             ->where('created_at', '>=', $thisStart)->pluck('customer_id')
             ->merge(Order::where('business_profile_id', $id)
@@ -112,7 +109,6 @@ class BusinessProfileController extends Controller
 
         $newCustomers = $customersThisMonth->diff($returning)->count();
 
-        // Revenue per day, last 30 days (zero-filled so charts have no gaps)
         $from = now()->subDays(29)->startOfDay();
 
         $paidByDay = PaymentRecord::where('business_profile_id', $id)
@@ -169,7 +165,6 @@ class BusinessProfileController extends Controller
      */
     public function store(StoreBusinessProfileRequest $request): JsonResponse
     {
-        // Ensure user is a provider
         if (! $request->user()->isProvider()) {
             return response()->json([
                 'success' => false,
@@ -177,7 +172,6 @@ class BusinessProfileController extends Controller
             ], 403);
         }
 
-        // Check if user already has a business profile
         if ($request->user()->businessProfile) {
             return response()->json([
                 'success' => false,
@@ -185,7 +179,6 @@ class BusinessProfileController extends Controller
             ], 422);
         }
 
-        // Create business profile
         $businessProfile = $request->user()->businessProfile()->create([
             'business_name' => $request->business_name,
             'business_type' => $request->business_type,
@@ -219,7 +212,6 @@ class BusinessProfileController extends Controller
             ], 404);
         }
 
-        // Update business profile
         $businessProfile->update($request->validated());
 
         CacheService::forgetBusiness($businessProfile->id);
@@ -252,7 +244,6 @@ class BusinessProfileController extends Controller
             $businessProfile->services()->delete();
             $businessProfile->products()->delete();
 
-            // Delete business profile
             $businessProfile->delete();
         });
 
@@ -263,7 +254,7 @@ class BusinessProfileController extends Controller
     }
 
     /**
-     * Get business profile by ID (public view)
+     * Get business profile 
      * GET /api/business/{id}
      */
     public function showPublic(string $id): JsonResponse
@@ -287,24 +278,21 @@ class BusinessProfileController extends Controller
     }
 
     /**
-     * Search/browse businesses (for customers)
+     * Search/browse businesses 
      * GET /api/business/search
      */
     public function search(Request $request): JsonResponse
     {
         $query = BusinessProfile::query()->with(['locations', 'user']);
 
-        // Filter by business type
         if ($request->has('business_type')) {
             $query->where('business_type', $request->business_type);
         }
 
-        // Filter by verified businesses
         if ($request->boolean('verified_only')) {
             $query->where('is_verified', true);
         }
 
-        // Search by name or description
         if ($request->has('query')) {
             $searchTerm = (string) $request->input('query');
             $query->where(function ($q) use ($searchTerm) {
@@ -313,7 +301,6 @@ class BusinessProfileController extends Controller
             });
         }
 
-        // Filter by minimum rating
         if ($request->has('min_rating')) {
             $query->where('average_rating', '>=', $request->min_rating);
         }
@@ -321,7 +308,7 @@ class BusinessProfileController extends Controller
         if ($request->has('latitude') && $request->has('longitude')) {
             $lat = $request->latitude;
             $lng = $request->longitude;
-            $radius = $request->radius ?? 10; // Default 10km
+            $radius = $request->radius ?? 10; 
 
             $query->whereHas('locations', function ($q) use ($lat, $lng, $radius) {
                 $q->selectRaw('
@@ -335,7 +322,6 @@ class BusinessProfileController extends Controller
             });
         }
 
-        // Sort by rating or date
         $sortBy = $request->get('sort_by', 'created_at');
         $sortOrder = $request->get('sort_order', 'desc');
 
@@ -345,7 +331,6 @@ class BusinessProfileController extends Controller
             $query->orderBy('created_at', $sortOrder);
         }
 
-        // Paginate results
         $perPage = $request->get('per_page', 15);
         $businesses = $query->paginate($perPage);
 

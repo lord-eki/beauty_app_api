@@ -15,35 +15,17 @@ use Illuminate\Support\Facades\DB;
 
 class SearchController extends Controller
 {
-    // -------------------------------------------------------------------------
-    // Haversine formula fragment — reused across all three geo searches
-    // 6371 = Earth radius in km
-    // -------------------------------------------------------------------------
+
+
     private const GEO_SELECT = '(6371 * acos(
         cos(radians(?)) * cos(radians(business_locations.latitude))
         * cos(radians(business_locations.longitude) - radians(?))
         + sin(radians(?)) * sin(radians(business_locations.latitude))
     )) AS distance';
 
-    // =========================================================================
     // GET /api/search/services
-    // =========================================================================
 
-    /**
-     * Search for services.
-     *
-     * Query params:
-     *   query        - text search (uses FULLTEXT index)
-     *   category     - category_id
-     *   min_price    - price_min >=
-     *   max_price    - price_max <=
-     *   home_service - boolean
-     *   lat, lng     - enable geo-filter
-     *   radius       - km, default 10
-     *   sort_by      - created_at | price | relevance (default: relevance when query present, else created_at)
-     *   sort_order   - asc | desc
-     *   per_page     - max 20
-     */
+   
     public function services(Request $request): JsonResponse
     {
         $request->validate([
@@ -55,12 +37,13 @@ class SearchController extends Controller
             'home_service' => 'nullable|boolean',
             'per_page'     => 'nullable|integer|min:1|max:20',
             'sort_order'   => 'nullable|in:asc,desc',
+            'seed' => 'nullable|integer|min:0|max:9'
         ]);
 
         $params = $request->only([
             'query','category','min_price','max_price',
             'home_service','lat','lng','radius',
-            'sort_by','sort_order','per_page','page',
+            'sort_by','sort_order','per_page','page','seed'
         ]);
 
         $results = CacheService::rememberSearchResults('svc', $params, function () use ($request) {
@@ -68,9 +51,7 @@ class SearchController extends Controller
             $hasGeo   = $request->filled('lat') && $request->filled('lng');
             $hasQuery = $request->filled('query');
 
-            // ------------------------------------------------------------------
-            // Base query — select only columns actually used in ServiceResource
-            // ------------------------------------------------------------------
+            
             $query = Service::query()
                 ->active()
                 ->select([
@@ -94,10 +75,6 @@ class SearchController extends Controller
                     'category:id,name,slug',
                 ]);
 
-            // ------------------------------------------------------------------
-            // FULLTEXT search — uses idx_service_search (name, description)
-            // Falls back to LIKE only if search term is too short for FULLTEXT
-            // ------------------------------------------------------------------
             if ($hasQuery) {
                 $term = trim((string) $request->input('query'));
                 if (strlen($term) >= 3) {
@@ -106,7 +83,6 @@ class SearchController extends Controller
                         [$term . '*']
                     );
                 } else {
-                    // Short terms (1-2 chars) — FULLTEXT won't match, use LIKE
                     $query->where(function ($q) use ($term) {
                         $q->where('services.name', 'like', "{$term}%")
                           ->orWhere('services.description', 'like', "{$term}%");
@@ -114,9 +90,7 @@ class SearchController extends Controller
                 }
             }
 
-            // ------------------------------------------------------------------
-            // Filters
-            // ------------------------------------------------------------------
+           
             if ($request->filled('category')) {
                 $query->where('services.category_id', (int) $request->category);
             }
@@ -133,10 +107,7 @@ class SearchController extends Controller
                 $query->where('services.is_home_service', $request->boolean('home_service'));
             }
 
-            // ------------------------------------------------------------------
-            // Geo filter — join business_locations, compute distance, filter
-            // Uses: services -> business_profiles -> business_locations
-            // ------------------------------------------------------------------
+            
             if ($hasGeo) {
                 $lat    = (float) $request->lat;
                 $lng    = (float) $request->lng;
@@ -156,17 +127,17 @@ class SearchController extends Controller
                     ->orderBy('distance');
             }
 
-            // ------------------------------------------------------------------
-            // Sorting
-            // ------------------------------------------------------------------
+            
             $sortOrder = $request->input('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
             $sortBy    = $request->input('sort_by', $hasQuery ? 'relevance' : 'created_at');
+            $seed = (int) $request->input('seed',0);
+
+
 
             if ($sortBy === 'price') {
                 $query->orderBy('services.price_min', $sortOrder);
             } elseif ($sortBy !== 'relevance') {
-                // relevance is already ordered by MySQL FULLTEXT score above
-                $query->orderBy('services.created_at', $sortOrder);
+                $query->boostedFirst($seed);
             }
 
             return $query->paginate((int) $request->input('per_page', 15));
@@ -175,25 +146,9 @@ class SearchController extends Controller
         return $this->paginatedResponse(ServiceResource::collection($results), $results);
     }
 
-    // =========================================================================
     // GET /api/search/products
-    // =========================================================================
 
-    /**
-     * Search for products.
-     *
-     * Query params:
-     *   query      - text search (FULLTEXT across name, description, brand)
-     *   category   - category_id
-     *   brand      - exact brand match
-     *   min_price  - price >=
-     *   max_price  - price <=
-     *   in_stock   - boolean
-     *   lat, lng   - geo-filter
-     *   radius     - km
-     *   sort_by    - created_at | price | relevance
-     *   per_page   - max 20
-     */
+    
     public function products(Request $request): JsonResponse
     {
         $request->validate([
@@ -205,12 +160,13 @@ class SearchController extends Controller
             'in_stock'   => 'nullable|boolean',
             'per_page'   => 'nullable|integer|min:1|max:20',
             'sort_order' => 'nullable|in:asc,desc',
+            'seed'  => 'nullable|integer|min:0|max:9'
         ]);
 
         $params = $request->only([
             'query','category','brand','min_price','max_price',
             'in_stock','lat','lng','radius',
-            'sort_by','sort_order','per_page','page',
+            'sort_by','sort_order','per_page','page','seed'
         ]);
 
         $results = CacheService::rememberSearchResults('prd', $params, function () use ($request) {
@@ -257,9 +213,7 @@ class SearchController extends Controller
                 }
             }
 
-            // ------------------------------------------------------------------
-            // Filters
-            // ------------------------------------------------------------------
+            
             if ($request->filled('category')) {
                 $query->where('products.category_id', (int) $request->category);
             }
@@ -277,12 +231,10 @@ class SearchController extends Controller
             }
 
             if ($request->boolean('in_stock')) {
-                $query->inStock(); // uses your existing scope
+                $query->inStock(); 
             }
 
-            // ------------------------------------------------------------------
-            // Geo filter — products -> business_profiles -> business_locations
-            // ------------------------------------------------------------------
+           
             if ($hasGeo) {
                 $lat    = (float) $request->lat;
                 $lng    = (float) $request->lng;
@@ -300,16 +252,14 @@ class SearchController extends Controller
                     ->orderBy('distance');
             }
 
-            // ------------------------------------------------------------------
-            // Sorting
-            // ------------------------------------------------------------------
+            $seed = (int)$request->input('seed',0);
             $sortOrder = $request->input('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
             $sortBy    = $request->input('sort_by', $hasQuery ? 'relevance' : 'created_at');
 
             if ($sortBy === 'price') {
                 $query->orderBy('products.price', $sortOrder);
             } elseif ($sortBy !== 'relevance') {
-                $query->orderBy('products.created_at', $sortOrder);
+                $query->boostedFirst($seed);
             }
 
             return $query->paginate((int) $request->input('per_page', 15));
@@ -318,23 +268,8 @@ class SearchController extends Controller
         return $this->paginatedResponse(ProductResource::collection($results), $results);
     }
 
-    // =========================================================================
     // GET /api/search/businesses
-    // =========================================================================
 
-    /**
-     * Search for businesses.
-     *
-     * Query params:
-     *   query      - text search (FULLTEXT across business_name, description)
-     *   type       - business_type (services | products | both)
-     *   verified   - boolean
-     *   min_rating - average_rating >=
-     *   lat, lng   - geo-filter
-     *   radius     - km
-     *   sort_by    - created_at | rating | reviews | distance
-     *   per_page   - max 20
-     */
     public function businesses(Request $request): JsonResponse
     {
         $request->validate([
@@ -359,12 +294,7 @@ class SearchController extends Controller
             $hasGeo   = $request->filled('lat') && $request->filled('lng');
             $hasQuery = $request->filled('query');
 
-            // ------------------------------------------------------------------
-            // Select only what BusinessProfileResource actually needs.
-            // NOTE: reviews relation removed — we already store average_rating
-            //       and total_reviews as denormalised columns. Loading the full
-            //       reviews relation was fetching thousands of rows per page.
-            // ------------------------------------------------------------------
+        
             $query = BusinessProfile::query()
                 ->select([
                     'business_profiles.id',
@@ -381,7 +311,6 @@ class SearchController extends Controller
                     'business_profiles.created_at',
                 ])
                 ->with([
-                    // Only pull columns the Flutter app renders in the list view
                     'locations:id,business_profile_id,city,county,latitude,longitude,is_primary,is_active',
                 ])
                 ->where('business_profiles.is_verified', '!=', false); // only show active businesses
@@ -401,9 +330,7 @@ class SearchController extends Controller
                 }
             }
 
-            // ------------------------------------------------------------------
-            // Filters
-            // ------------------------------------------------------------------
+           
             if ($request->filled('type')) {
                 $query->where('business_profiles.business_type', $request->type);
             }
@@ -416,13 +343,7 @@ class SearchController extends Controller
                 $query->where('business_profiles.average_rating', '>=', (float) $request->min_rating);
             }
 
-            // ------------------------------------------------------------------
-            // Geo filter — business_profiles -> business_locations (primary location)
-            //
-            // Uses a JOIN (not whereHas) so we can SELECT the distance column
-            // and ORDER BY it. whereHas with HAVING is a correlated subquery
-            // that can't expose the distance value for sorting.
-            // ------------------------------------------------------------------
+           
             if ($hasGeo) {
                 $lat    = (float) $request->lat;
                 $lng    = (float) $request->lng;
@@ -432,7 +353,7 @@ class SearchController extends Controller
                     ->join('business_locations as bl_geo',
                         'bl_geo.business_profile_id', '=', 'business_profiles.id')
                     ->where('bl_geo.is_active', true)
-                    ->where('bl_geo.is_primary', true) // one location per business in results
+                    ->where('bl_geo.is_primary', true) 
                     ->addSelect(DB::raw(
                         '(6371 * acos(
                             cos(radians(?)) * cos(radians(bl_geo.latitude))
@@ -444,9 +365,7 @@ class SearchController extends Controller
                     ->having('distance', '<=', $radius);
             }
 
-            // ------------------------------------------------------------------
-            // Sorting
-            // ------------------------------------------------------------------
+            
             $sortOrder = $request->input('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
             $sortBy    = $request->input('sort_by', 'created_at');
 
@@ -465,13 +384,7 @@ class SearchController extends Controller
         return $this->paginatedResponse(BusinessProfileResource::collection($results), $results);
     }
 
-    // =========================================================================
-    // Private helpers
-    // =========================================================================
-
-    /**
-     * Standard paginated JSON envelope used by all three endpoints.
-     */
+    
     private function paginatedResponse(mixed $collection, mixed $paginator): JsonResponse
     {
         return response()->json([
