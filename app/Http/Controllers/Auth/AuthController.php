@@ -42,7 +42,7 @@ class AuthController extends Controller
         try {
             $this->otpService->generateAndSend($user);
         } catch (Throwable $e) {
-            Log::warning('Failed to send registration OTP to {$user->phone}: {$e->gentMessage()}');
+            Log::warning("Failed to send registration OTP to {$user->phone}: {$e->getMessage()}");
         }
 
         try {
@@ -187,7 +187,7 @@ class AuthController extends Controller
             return response()->json(['success' => true, 'message' => 'Phone number is already verified'], 200);
         }
 
-        if ($this->otpService->verify($user, $request->otp)) {
+        if (! $this->otpService->verify($user, $request->otp)) {
             throw ValidationException::withMessages(['otp' => ['That code is invalid or is expired']]);
         }
 

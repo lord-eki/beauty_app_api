@@ -27,7 +27,6 @@ class UpdateUserRequest extends FormRequest
         return [
             'first_name' => ['sometimes', 'string', 'max:100'],
             'last_name' => ['sometimes', 'string', 'max:100'],
-            'user_type' => ['sometimes', 'string', 'in:customer,provider'],
             'email' => [
                 'sometimes',
                 'email',

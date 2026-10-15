@@ -26,7 +26,7 @@ class OtpService
 
     public function verify(User $user, string $code): bool
     {
-        if(!$user->phone_otp_hash || $user->phone_otp_expires_at){
+        if(!$user->phone_otp_hash || ! $user->phone_otp_expires_at){
             return false;
         }
         
@@ -34,7 +34,7 @@ class OtpService
             return false;
         }
 
-        if(!Hash::chek($code,$user->phone_otp_hash)){
+        if(!Hash::check($code,$user->phone_otp_hash)){
             return false;
         }
 
@@ -52,8 +52,8 @@ class OtpService
         return str_pad((string)random_int(0,999999), self::LENGTH,'0',STR_PAD_LEFT);
     }
 
-    private function send(string $Phone, string $code): void
+    private function send(string $phone, string $code): void
     {
-        Log::info('SMS OTP to {$phone} : {$ode}');
+        Log::info("SMS OTP to {$phone} : {$code}");
     }
 }

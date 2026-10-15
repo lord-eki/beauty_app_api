@@ -62,7 +62,12 @@ class UserController extends Controller
         $user = $request->user();
 
 
-        $user->update($request->validated());
+        $user->fill($request->validated());
+
+        if($user->isDirty('phone')) $user->phone_verified_at = null;
+        if($user->isDirty('email')) $user->email_verified_at = null;
+
+        $user->save();
 
         return response()->json([
             'success' => true,
