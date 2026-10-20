@@ -17,7 +17,6 @@ trait Boostable
         return $query
             ->addSelect(DB::raw("{$isBoosted} AS is_boosted"))
             ->orderByDesc('is_boosted')
-            ->orderByRaw("CASE WHEN {$isBoosted} THEN MD5(CONCAT(?, {$t}.id)) ELSE '' END", [$seed])
-            ->orderByDesc("{$t}.created_at");
+            ->orderByRaw("CASE WHEN {$isBoosted} THEN MD5(CONCAT(?, {$t}.id)) ELSE '' END", [$seed]);
     }
 }

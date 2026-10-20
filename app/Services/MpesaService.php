@@ -14,6 +14,7 @@ class MpesaService
     protected string $shortcode;
     protected string $passkey;
     protected string $callbackUrl;
+    protected string $partyB;
 
     public function __construct()
     {
@@ -23,6 +24,8 @@ class MpesaService
         $this->shortcode      = config('mpesa.shortcode');
         $this->passkey        = config('mpesa.passkey');
         $this->callbackUrl    = config('mpesa.callback_url');
+        $this->partyB         = config('mpesa.partyB');
+
     }
 
     /**
@@ -55,7 +58,7 @@ class MpesaService
             'TransactionType'   => 'CustomerPayBillOnline',
             'Amount'            => (int) ceil($amount),
             'PartyA'            => $phone,
-            'PartyB'            => $this->shortcode,
+            'PartyB'            => $this->partyB,
             'PhoneNumber'       => $phone,
             'CallBackURL'       => $this->callbackUrl,
             'AccountReference'  => $reference,

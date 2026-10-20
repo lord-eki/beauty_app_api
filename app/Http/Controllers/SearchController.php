@@ -9,10 +9,8 @@ use App\Models\BusinessProfile;
 use App\Models\Product;
 use App\Models\Service;
 use App\Services\CacheService;
-use App\Services\ListingRanker;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class SearchController extends Controller
@@ -26,274 +24,237 @@ class SearchController extends Controller
 
     // GET /api/search/services
 
-    public function services(Request $request): JsonResponse
-    {
-        $request->validate([
-            'min_price' => 'nullable|numeric|min:0',
-            'max_price' => 'nullable|numeric|min:0',
-            'lat' => 'nullable|numeric|between:-90,90',
-            'lng' => 'nullable|numeric|between:-180,180',
-            'radius' => 'nullable|numeric|min:1|max:200',
-            'home_service' => 'nullable|boolean',
-            'per_page' => 'nullable|integer|min:1|max:20',
-            'sort_order' => 'nullable|in:asc,desc',
-            'seed' => 'nullable|integer|min:0|max:9',
-        ]);
+  public function services(Request $request): JsonResponse
+{
+    $request->validate([
+        'min_price' => 'nullable|numeric|min:0',
+        'max_price' => 'nullable|numeric|min:0',
+        'lat' => 'nullable|numeric|between:-90,90',
+        'lng' => 'nullable|numeric|between:-180,180',
+        'radius' => 'nullable|numeric|min:1|max:200',
+        'home_service' => 'nullable|boolean',
+        'per_page' => 'nullable|integer|min:1|max:20',
+        'sort_order' => 'nullable|in:asc,desc',
+        'seed' => 'nullable|integer|min:0|max:9',
+    ]);
 
-        $params = $request->only([
-            'query',
-            'category',
-            'min_price',
-            'max_price',
-            'home_service',
-            'lat',
-            'lng',
-            'radius',
-            'sort_by',
-            'sort_order',
-            'per_page',
-            'page',
-            'seed',
-        ]);
+    $params = $request->only([
+        'query', 'category', 'min_price', 'max_price', 'home_service',
+        'lat', 'lng', 'radius', 'sort_by', 'sort_order', 'per_page', 'page', 'seed',
+    ]);
 
-        $results = CacheService::rememberSearchResults('svc', $params, function () use ($request) {
+    $results = CacheService::rememberSearchResults('svc', $params, function () use ($request) {
 
-            $hasGeo = $request->filled('lat') && $request->filled('lng');
-            $hasQuery = $request->filled('query');
+        $hasGeo = $request->filled('lat') && $request->filled('lng');
+        $hasQuery = $request->filled('query');
 
-            $query = Service::query()
-                ->active()
-                ->select([
-                    'services.id',
-                    'services.business_profile_id',
-                    'services.category_id',
-                    'services.name',
-                    'services.description',
-                    'services.price_min',
-                    'services.price_max',
-                    'services.duration_minutes',
-                    'services.images',
-                    'services.is_home_service',
-                    'services.is_active',
-                    'services.created_at',
-                ])
-                ->with([
-                    'businessProfile:id,business_name,business_type,average_rating,total_reviews,is_verified',
-                    'businessProfile.locations:id,business_profile_id,name,address,city,county,postal_code,latitude,longitude,is_primary,is_active',
-                    'businessProfile.availabilities:id,business_profile_id,day_of_week,start_time,end_time,is_available',
-                    'category:id,name,slug',
-                ]);
+        $query = Service::query()
+            ->active()
+            ->select([
+                'services.id',
+                'services.business_profile_id',
+                'services.category_id',
+                'services.name',
+                'services.description',
+                'services.price_min',
+                'services.price_max',
+                'services.duration_minutes',
+                'services.images',
+                'services.is_home_service',
+                'services.is_active',
+                'services.created_at',
+            ])
+            ->with([
+                'businessProfile:id,business_name,business_type,average_rating,total_reviews,is_verified',
+                'businessProfile.locations:id,business_profile_id,name,address,city,county,postal_code,latitude,longitude,is_primary,is_active',
+                'businessProfile.availabilities:id,business_profile_id,day_of_week,start_time,end_time,is_available',
+                'category:id,name,slug',
+            ]);
 
-            if ($hasQuery) {
-                $term = trim((string) $request->input('query'));
-                if (strlen($term) >= 3) {
-                    $query->whereRaw(
-                        'MATCH(services.name, services.description) AGAINST(? IN BOOLEAN MODE)',
-                        [$term . '*']
-                    );
-                } else {
-                    $query->where(function ($q) use ($term) {
-                        $q->where('services.name', 'like', "{$term}%")
-                            ->orWhere('services.description', 'like', "{$term}%");
-                    });
-                }
+        if ($hasQuery) {
+            $term = trim((string) $request->input('query'));
+            if (strlen($term) >= 3) {
+                $query->whereRaw(
+                    'MATCH(services.name, services.description) AGAINST(? IN BOOLEAN MODE)',
+                    [$term . '*']
+                );
+            } else {
+                $query->where(function ($q) use ($term) {
+                    $q->where('services.name', 'like', "{$term}%")
+                        ->orWhere('services.description', 'like', "{$term}%");
+                });
             }
+        }
 
-            if ($request->filled('category')) {
-                $query->where('services.category_id', (int) $request->category);
-            }
+        if ($request->filled('category')) {
+            $query->where('services.category_id', (int) $request->category);
+        }
 
-            if ($request->filled('min_price')) {
-                $query->where('services.price_min', '>=', (float) $request->min_price);
-            }
+        if ($request->filled('min_price')) {
+            $query->where('services.price_min', '>=', (float) $request->min_price);
+        }
 
-            if ($request->filled('max_price')) {
-                $query->where('services.price_max', '<=', (float) $request->max_price);
-            }
+        if ($request->filled('max_price')) {
+            $query->where('services.price_max', '<=', (float) $request->max_price);
+        }
 
-            if ($request->filled('home_service')) {
-                $query->where('services.is_home_service', $request->boolean('home_service'));
-            }
+        if ($request->filled('home_service')) {
+            $query->where('services.is_home_service', $request->boolean('home_service'));
+        }
 
-            if ($hasGeo) {
-                $lat = (float) $request->lat;
-                $lng = (float) $request->lng;
-                $radius = (float) $request->input('radius', 10);
+        if ($hasGeo) {
+            $lat = (float) $request->lat;
+            $lng = (float) $request->lng;
+            $radius = (float) $request->input('radius', 10);
 
-                $query
-                    ->join(
-                        'business_profiles as bp',
-                        'services.business_profile_id',
-                        '=',
-                        'bp.id'
-                    )
-                    ->join(
-                        'business_locations',
-                        'business_locations.business_profile_id',
-                        '=',
-                        'bp.id'
-                    )
-                    ->where('business_locations.is_active', true)
-                    ->addSelect(DB::raw(
-                        str_replace('?', '?', self::GEO_SELECT)
-                    ))
-                    ->addBinding([$lat, $lng, $lat], 'select')
-                    ->having('distance', '<=', $radius)
-                    ->orderBy('distance');
-            }
+            $query
+                ->join('business_profiles as bp', 'services.business_profile_id', '=', 'bp.id')
+                ->join('business_locations', 'business_locations.business_profile_id', '=', 'bp.id')
+                ->where('business_locations.is_active', true)
+                ->where('business_locations.is_primary', true)   
+                ->addSelect(DB::raw(self::GEO_SELECT))
+                ->addBinding([$lat, $lng, $lat], 'select')
+                ->having('distance', '<=', $radius);
+            
+        }
 
-            $sortOrder = $request->input('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
-            $sortBy = $request->input('sort_by', $hasQuery ? 'relevance' : 'created_at');
-            $seed = (int) $request->input('seed', 0);
+        $sortOrder = $request->input('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
+        $sortBy = $request->input('sort_by', 'created_at'); 
+        $seed = (int) $request->input('seed', 0);
 
-            if ($sortBy === 'price') {
-                $query->orderBy('services.price_min', $sortOrder);
-            } elseif ($sortBy !== 'relevance') {
-                $query->boostedFirst($seed);
-            }
+        
+        if ($sortBy === 'price') {
+            $query->orderBy('services.price_min', $sortOrder);
+        } else {
+            $query->boostedFirst($seed);   
+            $hasGeo
+                ? $query->orderBy('distance')                     
+                : $query->orderByDesc('services.created_at');    
+        }
 
-            return $query->paginate((int) $request->input('per_page', 15));
-        });
+        return $query->paginate((int) $request->input('per_page', 15));
+    });
 
-        return $this->paginatedResponse(ServiceResource::collection($results), $results);
-    }
+    return $this->paginatedResponse(ServiceResource::collection($results), $results);
+}
 
     // GET /api/search/products
 
-    public function products(Request $request): JsonResponse
-    {
-        $request->validate([
-            'min_price' => 'nullable|numeric|min:0',
-            'max_price' => 'nullable|numeric|min:0',
-            'lat' => 'nullable|numeric|between:-90,90',
-            'lng' => 'nullable|numeric|between:-180,180',
-            'radius' => 'nullable|numeric|min:1|max:200',
-            'in_stock' => 'nullable|boolean',
-            'per_page' => 'nullable|integer|min:1|max:20',
-            'sort_order' => 'nullable|in:asc,desc',
-            'seed' => 'nullable|integer|min:0|max:9',
-        ]);
+   public function products(Request $request): JsonResponse
+{
+    $request->validate([
+        'min_price' => 'nullable|numeric|min:0',
+        'max_price' => 'nullable|numeric|min:0',
+        'lat' => 'nullable|numeric|between:-90,90',
+        'lng' => 'nullable|numeric|between:-180,180',
+        'radius' => 'nullable|numeric|min:1|max:200',
+        'in_stock' => 'nullable|boolean',
+        'per_page' => 'nullable|integer|min:1|max:20',
+        'sort_order' => 'nullable|in:asc,desc',
+        'seed' => 'nullable|integer|min:0|max:9',
+    ]);
 
-        $params = $request->only([
-            'query',
-            'category',
-            'brand',
-            'min_price',
-            'max_price',
-            'in_stock',
-            'lat',
-            'lng',
-            'radius',
-            'sort_by',
-            'sort_order',
-            'per_page',
-            'page',
-            'seed',
-        ]);
+    $params = $request->only([
+        'query', 'category', 'brand', 'min_price', 'max_price', 'in_stock',
+        'lat', 'lng', 'radius', 'sort_by', 'sort_order', 'per_page', 'page', 'seed',
+    ]);
 
-        $results = CacheService::rememberSearchResults('prd', $params, function () use ($request) {
+    $results = CacheService::rememberSearchResults('prd', $params, function () use ($request) {
 
-            $hasGeo = $request->filled('lat') && $request->filled('lng');
-            $hasQuery = $request->filled('query');
+        $hasGeo = $request->filled('lat') && $request->filled('lng');
+        $hasQuery = $request->filled('query');
 
-            $query = Product::query()
-                ->active()
-                ->select([
-                    'products.id',
-                    'products.business_profile_id',
-                    'products.category_id',
-                    'products.name',
-                    'products.description',
-                    'products.brand',
-                    'products.price',
-                    'products.discounted_price',
-                    'products.stock_quantity',
-                    'products.images',
-                    'products.is_active',
-                    'products.created_at',
-                ])
-                ->with([
-                    'businessProfile:id,business_name,business_type,average_rating,total_reviews,is_verified',
-                    'businessProfile.locations:id,business_profile_id,name,address,city,county,postal_code,latitude,longitude,is_primary,is_active',
-                    'businessProfile.availabilities:id,business_profile_id,day_of_week,start_time,end_time,is_available',
-                    'category:id,name,slug',
-                ]);
+        $query = Product::query()
+            ->active()
+            ->select([
+                'products.id',
+                'products.business_profile_id',
+                'products.category_id',
+                'products.name',
+                'products.description',
+                'products.brand',
+                'products.price',
+                'products.discounted_price',
+                'products.stock_quantity',
+                'products.images',
+                'products.is_active',
+                'products.created_at',
+            ])
+            ->with([
+                'businessProfile:id,business_name,business_type,average_rating,total_reviews,is_verified',
+                'businessProfile.locations:id,business_profile_id,name,address,city,county,postal_code,latitude,longitude,is_primary,is_active',
+                'businessProfile.availabilities:id,business_profile_id,day_of_week,start_time,end_time,is_available',
+                'category:id,name,slug',
+            ]);
 
-            if ($hasQuery) {
-                $term = trim((string) $request->input('query'));
-                if (strlen($term) >= 3) {
-                    $query->whereRaw(
-                        'MATCH(products.name, products.description, products.brand) AGAINST(? IN BOOLEAN MODE)',
-                        [$term . '*']
-                    );
-                } else {
-                    $query->where(function ($q) use ($term) {
-                        $q->where('products.name', 'like', "{$term}%")
-                            ->orWhere('products.brand', 'like', "{$term}%");
-                    });
-                }
+        if ($hasQuery) {
+            $term = trim((string) $request->input('query'));
+            if (strlen($term) >= 3) {
+                $query->whereRaw(
+                    'MATCH(products.name, products.description, products.brand) AGAINST(? IN BOOLEAN MODE)',
+                    [$term . '*']
+                );
+            } else {
+                $query->where(function ($q) use ($term) {
+                    $q->where('products.name', 'like', "{$term}%")
+                        ->orWhere('products.brand', 'like', "{$term}%");
+                });
             }
+        }
 
-            if ($request->filled('category')) {
-                $query->where('products.category_id', (int) $request->category);
-            }
+        if ($request->filled('category')) {
+            $query->where('products.category_id', (int) $request->category);
+        }
 
-            if ($request->filled('brand')) {
-                $query->where('products.brand', $request->brand);
-            }
+        if ($request->filled('brand')) {
+            $query->where('products.brand', $request->brand);
+        }
 
-            if ($request->filled('min_price')) {
-                $query->where('products.price', '>=', (float) $request->min_price);
-            }
+        if ($request->filled('min_price')) {
+            $query->where('products.price', '>=', (float) $request->min_price);
+        }
 
-            if ($request->filled('max_price')) {
-                $query->where('products.price', '<=', (float) $request->max_price);
-            }
+        if ($request->filled('max_price')) {
+            $query->where('products.price', '<=', (float) $request->max_price);
+        }
 
-            if ($request->boolean('in_stock')) {
-                $query->inStock();
-            }
+        if ($request->boolean('in_stock')) {
+            $query->inStock();
+        }
 
-            if ($hasGeo) {
-                $lat = (float) $request->lat;
-                $lng = (float) $request->lng;
-                $radius = (float) $request->input('radius', 10);
+        if ($hasGeo) {
+            $lat = (float) $request->lat;
+            $lng = (float) $request->lng;
+            $radius = (float) $request->input('radius', 10);
 
-                $query
-                    ->join(
-                        'business_profiles as bp',
-                        'products.business_profile_id',
-                        '=',
-                        'bp.id'
-                    )
-                    ->join(
-                        'business_locations',
-                        'business_locations.business_profile_id',
-                        '=',
-                        'bp.id'
-                    )
-                    ->where('business_locations.is_active', true)
-                    ->addSelect(DB::raw(self::GEO_SELECT))
-                    ->addBinding([$lat, $lng, $lat], 'select')
-                    ->having('distance', '<=', $radius)
-                    ->orderBy('distance');
-            }
+            $query
+                ->join('business_profiles as bp', 'products.business_profile_id', '=', 'bp.id')
+                ->join('business_locations', 'business_locations.business_profile_id', '=', 'bp.id')
+                ->where('business_locations.is_active', true)
+                ->where('business_locations.is_primary', true)   
+                ->addSelect(DB::raw(self::GEO_SELECT))
+                ->addBinding([$lat, $lng, $lat], 'select')
+                ->having('distance', '<=', $radius);
+        }
 
-            $seed = (int) $request->input('seed', 0);
-            $sortOrder = $request->input('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
-            $sortBy = $request->input('sort_by', $hasQuery ? 'relevance' : 'created_at');
+        $seed = (int) $request->input('seed', 0);
+        $sortOrder = $request->input('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
+        $sortBy = $request->input('sort_by', 'created_at');   
 
-            if ($sortBy === 'price') {
-                $query->orderBy('products.price', $sortOrder);
-            } elseif ($sortBy !== 'relevance') {
-                $query->boostedFirst($seed);
-            }
+        if ($sortBy === 'price') {
+            $query->orderBy('products.price', $sortOrder);
+        } else {
+            $query->boostedFirst($seed);
+            $hasGeo
+                ? $query->orderBy('distance')
+                : $query->orderByDesc('products.created_at');
+        }
 
-            return $query->paginate((int) $request->input('per_page', 15));
-        });
+        return $query->paginate((int) $request->input('per_page', 15));
+    });
 
-        return $this->paginatedResponse(ProductResource::collection($results), $results);
-    }
+    return $this->paginatedResponse(ProductResource::collection($results), $results);
+}
 
     // GET /api/search/businesses
 
