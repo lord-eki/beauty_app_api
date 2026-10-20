@@ -51,9 +51,9 @@ Route::prefix('auth')->group(function () {
 Route::post('/mpesa/callback', [MpesaTransactionController::class, 'callback']);
 
 /*
-|--------------------------------------------------------------------------
+
 | PUBLIC BROWSING
-|--------------------------------------------------------------------------
+
 */
 
 Route::prefix('categories')->group(function () {
@@ -88,9 +88,9 @@ Route::prefix('public/business')->group(function () {
 Route::get('/locations/nearby', [BusinessLocationController::class, 'nearby']);
 
 /*
-|--------------------------------------------------------------------------
+
 | PROTECTED ROUTES (SANCTUM)
-|--------------------------------------------------------------------------
+
 */
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -103,7 +103,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
-    |-------------- SUBSCRIPTIONS ----------------------------------------------
+     Subscriptions 
     */
     Route::prefix('subscription')->group(function () {
         Route::get('/status', [SubscriptionController::class, 'status']);
@@ -113,7 +113,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
-    |-------------- PROMOTIONS (customer-facing) -------------------------------
+     Promotions
     */
     Route::prefix('promotions')->group(function () {
         Route::get('/validate', [PromotionController::class, 'validate']);
@@ -121,7 +121,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
-    |-------------- REVIEWS (customer) ----------------------------------------
+     Reviews 
     */
     Route::prefix('reviews')->group(function () {
         Route::post('/', [ReviewController::class, 'store']);
@@ -130,7 +130,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
-    |-------------- CHAT -------------------------------------------------------
+     Chat 
     */
     Route::prefix('conversations')->group(function () {
         Route::get('/', [ChatController::class, 'index']);
@@ -143,7 +143,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/messages/{message}/read', [ChatController::class, 'markRead']);
 
     /*
-    |-------------- BUSINESS PROFILE ------------------------------------------
+     BUSINESS PROFILE 
     */
     Route::prefix('business')->group(function () {
 
@@ -168,11 +168,8 @@ Route::middleware('auth:sanctum')->group(function () {
             });
         });
 
-        // ── Core tools: available to every business (free tier) ──────────────
-        // Creating a service/product is limited to the free quota unless the
-        // business has an active subscription (EnforceListingQuota).
 
-        /* -- Services -- */
+        // Services 
         Route::prefix('services')->group(function () {
             Route::get('/', [ServicesController::class, 'index']);
             Route::post('/', [ServicesController::class, 'store'])->middleware(EnforceListingQuota::class);
@@ -183,7 +180,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/{service}/images/{imageIndex}', [ServicesController::class, 'deleteImage']);
         });
 
-        /* -- Products -- */
+        // Products 
         Route::prefix('products')->group(function () {
             Route::get('/', [ProductController::class, 'index']);
             Route::post('/', [ProductController::class, 'store'])->middleware(EnforceListingQuota::class);
@@ -194,7 +191,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);
         });
 
-        /* -- Schedule / Availability -- */
+        // Schedule / Availability 
         Route::prefix('schedule')->group(function () {
             Route::get('/', [ServiceAvailabilityController::class, 'index']);
             Route::post('/', [ServiceAvailabilityController::class, 'store']);
@@ -202,21 +199,21 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/{serviceAvailability}', [ServiceAvailabilityController::class, 'destroy']);
         });
 
-        /* -- Appointments (business view) — a free business must always see its bookings -- */
+        // Appointments (business view) — a free business must always see its bookings 
         Route::get('/appointments', [AppointmentController::class, 'businessAppointments']);
         Route::post('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirm']);
         Route::post('/appointments/{appointment}/complete', [AppointmentController::class, 'complete']);
         Route::post('/appointments/{appointment}/payment', [AppointmentController::class, 'recordPayment']);
 
-        /* -- Orders (business view) -- */
+        // Orders (business view) 
         Route::get('/orders', [OrderController::class, 'businessOrders']);
         Route::put('/orders/{order}/status', [OrderController::class, 'updateStatus']);
         Route::post('/orders/{order}/payment', [OrderController::class, 'recordPayment']);
 
-        // ── Premium tools: subscription required ───────────────────────────────
+        //  Premium tools: subscription required 
         Route::middleware('subscription')->group(function () {
 
-            /* -- Inventory -- */
+            // Inventory 
             Route::prefix('inventory')->group(function () {
                 Route::get('/', [InventoryController::class, 'index']);
                 Route::get('/low-stock', [InventoryController::class, 'lowStock']);
@@ -248,7 +245,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
-    |-------------- CUSTOMER — APPOINTMENTS ------------------------------------
+     CUSTOMER — APPOINTMENTS 
     */
     Route::prefix('appointments')->group(function () {
         Route::get('/', [AppointmentController::class, 'index']);
@@ -259,7 +256,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     /*
-    |-------------- CUSTOMER — ORDERS ------------------------------------------
+     CUSTOMER — ORDERS 
     */
     Route::prefix('orders')->group(function () {
         Route::get('/', [OrderController::class, 'index']);

@@ -4,6 +4,7 @@ return [
 
  
     'free_listing_limit' => (int) env('FREE_LISTING_LIMIT', 2),
+    
 
 
     'plans' => [

@@ -9,49 +9,58 @@ use App\Models\BusinessProfile;
 use App\Models\Product;
 use App\Models\Service;
 use App\Services\CacheService;
+use App\Services\ListingRanker;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class SearchController extends Controller
 {
-
-
     private const GEO_SELECT = '(6371 * acos(
         cos(radians(?)) * cos(radians(business_locations.latitude))
         * cos(radians(business_locations.longitude) - radians(?))
         + sin(radians(?)) * sin(radians(business_locations.latitude))
     )) AS distance';
 
+
     // GET /api/search/services
 
-   
     public function services(Request $request): JsonResponse
     {
         $request->validate([
-            'min_price'    => 'nullable|numeric|min:0',
-            'max_price'    => 'nullable|numeric|min:0',
-            'lat'          => 'nullable|numeric|between:-90,90',
-            'lng'          => 'nullable|numeric|between:-180,180',
-            'radius'       => 'nullable|numeric|min:1|max:200',
+            'min_price' => 'nullable|numeric|min:0',
+            'max_price' => 'nullable|numeric|min:0',
+            'lat' => 'nullable|numeric|between:-90,90',
+            'lng' => 'nullable|numeric|between:-180,180',
+            'radius' => 'nullable|numeric|min:1|max:200',
             'home_service' => 'nullable|boolean',
-            'per_page'     => 'nullable|integer|min:1|max:20',
-            'sort_order'   => 'nullable|in:asc,desc',
-            'seed' => 'nullable|integer|min:0|max:9'
+            'per_page' => 'nullable|integer|min:1|max:20',
+            'sort_order' => 'nullable|in:asc,desc',
+            'seed' => 'nullable|integer|min:0|max:9',
         ]);
 
         $params = $request->only([
-            'query','category','min_price','max_price',
-            'home_service','lat','lng','radius',
-            'sort_by','sort_order','per_page','page','seed'
+            'query',
+            'category',
+            'min_price',
+            'max_price',
+            'home_service',
+            'lat',
+            'lng',
+            'radius',
+            'sort_by',
+            'sort_order',
+            'per_page',
+            'page',
+            'seed',
         ]);
 
         $results = CacheService::rememberSearchResults('svc', $params, function () use ($request) {
 
-            $hasGeo   = $request->filled('lat') && $request->filled('lng');
+            $hasGeo = $request->filled('lat') && $request->filled('lng');
             $hasQuery = $request->filled('query');
 
-            
             $query = Service::query()
                 ->active()
                 ->select([
@@ -85,12 +94,11 @@ class SearchController extends Controller
                 } else {
                     $query->where(function ($q) use ($term) {
                         $q->where('services.name', 'like', "{$term}%")
-                          ->orWhere('services.description', 'like', "{$term}%");
+                            ->orWhere('services.description', 'like', "{$term}%");
                     });
                 }
             }
 
-           
             if ($request->filled('category')) {
                 $query->where('services.category_id', (int) $request->category);
             }
@@ -107,17 +115,24 @@ class SearchController extends Controller
                 $query->where('services.is_home_service', $request->boolean('home_service'));
             }
 
-            
             if ($hasGeo) {
-                $lat    = (float) $request->lat;
-                $lng    = (float) $request->lng;
+                $lat = (float) $request->lat;
+                $lng = (float) $request->lng;
                 $radius = (float) $request->input('radius', 10);
 
                 $query
-                    ->join('business_profiles as bp',
-                        'services.business_profile_id', '=', 'bp.id')
-                    ->join('business_locations',
-                        'business_locations.business_profile_id', '=', 'bp.id')
+                    ->join(
+                        'business_profiles as bp',
+                        'services.business_profile_id',
+                        '=',
+                        'bp.id'
+                    )
+                    ->join(
+                        'business_locations',
+                        'business_locations.business_profile_id',
+                        '=',
+                        'bp.id'
+                    )
                     ->where('business_locations.is_active', true)
                     ->addSelect(DB::raw(
                         str_replace('?', '?', self::GEO_SELECT)
@@ -127,12 +142,9 @@ class SearchController extends Controller
                     ->orderBy('distance');
             }
 
-            
             $sortOrder = $request->input('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
-            $sortBy    = $request->input('sort_by', $hasQuery ? 'relevance' : 'created_at');
-            $seed = (int) $request->input('seed',0);
-
-
+            $sortBy = $request->input('sort_by', $hasQuery ? 'relevance' : 'created_at');
+            $seed = (int) $request->input('seed', 0);
 
             if ($sortBy === 'price') {
                 $query->orderBy('services.price_min', $sortOrder);
@@ -148,30 +160,40 @@ class SearchController extends Controller
 
     // GET /api/search/products
 
-    
     public function products(Request $request): JsonResponse
     {
         $request->validate([
-            'min_price'  => 'nullable|numeric|min:0',
-            'max_price'  => 'nullable|numeric|min:0',
-            'lat'        => 'nullable|numeric|between:-90,90',
-            'lng'        => 'nullable|numeric|between:-180,180',
-            'radius'     => 'nullable|numeric|min:1|max:200',
-            'in_stock'   => 'nullable|boolean',
-            'per_page'   => 'nullable|integer|min:1|max:20',
+            'min_price' => 'nullable|numeric|min:0',
+            'max_price' => 'nullable|numeric|min:0',
+            'lat' => 'nullable|numeric|between:-90,90',
+            'lng' => 'nullable|numeric|between:-180,180',
+            'radius' => 'nullable|numeric|min:1|max:200',
+            'in_stock' => 'nullable|boolean',
+            'per_page' => 'nullable|integer|min:1|max:20',
             'sort_order' => 'nullable|in:asc,desc',
-            'seed'  => 'nullable|integer|min:0|max:9'
+            'seed' => 'nullable|integer|min:0|max:9',
         ]);
 
         $params = $request->only([
-            'query','category','brand','min_price','max_price',
-            'in_stock','lat','lng','radius',
-            'sort_by','sort_order','per_page','page','seed'
+            'query',
+            'category',
+            'brand',
+            'min_price',
+            'max_price',
+            'in_stock',
+            'lat',
+            'lng',
+            'radius',
+            'sort_by',
+            'sort_order',
+            'per_page',
+            'page',
+            'seed',
         ]);
 
         $results = CacheService::rememberSearchResults('prd', $params, function () use ($request) {
 
-            $hasGeo   = $request->filled('lat') && $request->filled('lng');
+            $hasGeo = $request->filled('lat') && $request->filled('lng');
             $hasQuery = $request->filled('query');
 
             $query = Product::query()
@@ -197,7 +219,6 @@ class SearchController extends Controller
                     'category:id,name,slug',
                 ]);
 
-       
             if ($hasQuery) {
                 $term = trim((string) $request->input('query'));
                 if (strlen($term) >= 3) {
@@ -208,12 +229,11 @@ class SearchController extends Controller
                 } else {
                     $query->where(function ($q) use ($term) {
                         $q->where('products.name', 'like', "{$term}%")
-                          ->orWhere('products.brand', 'like', "{$term}%");
+                            ->orWhere('products.brand', 'like', "{$term}%");
                     });
                 }
             }
 
-            
             if ($request->filled('category')) {
                 $query->where('products.category_id', (int) $request->category);
             }
@@ -231,20 +251,27 @@ class SearchController extends Controller
             }
 
             if ($request->boolean('in_stock')) {
-                $query->inStock(); 
+                $query->inStock();
             }
 
-           
             if ($hasGeo) {
-                $lat    = (float) $request->lat;
-                $lng    = (float) $request->lng;
+                $lat = (float) $request->lat;
+                $lng = (float) $request->lng;
                 $radius = (float) $request->input('radius', 10);
 
                 $query
-                    ->join('business_profiles as bp',
-                        'products.business_profile_id', '=', 'bp.id')
-                    ->join('business_locations',
-                        'business_locations.business_profile_id', '=', 'bp.id')
+                    ->join(
+                        'business_profiles as bp',
+                        'products.business_profile_id',
+                        '=',
+                        'bp.id'
+                    )
+                    ->join(
+                        'business_locations',
+                        'business_locations.business_profile_id',
+                        '=',
+                        'bp.id'
+                    )
                     ->where('business_locations.is_active', true)
                     ->addSelect(DB::raw(self::GEO_SELECT))
                     ->addBinding([$lat, $lng, $lat], 'select')
@@ -252,9 +279,9 @@ class SearchController extends Controller
                     ->orderBy('distance');
             }
 
-            $seed = (int)$request->input('seed',0);
+            $seed = (int) $request->input('seed', 0);
             $sortOrder = $request->input('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
-            $sortBy    = $request->input('sort_by', $hasQuery ? 'relevance' : 'created_at');
+            $sortBy = $request->input('sort_by', $hasQuery ? 'relevance' : 'created_at');
 
             if ($sortBy === 'price') {
                 $query->orderBy('products.price', $sortOrder);
@@ -273,28 +300,35 @@ class SearchController extends Controller
     public function businesses(Request $request): JsonResponse
     {
         $request->validate([
-            'type'       => 'nullable|in:services,products,both',
+            'type' => 'nullable|in:services,products,both',
             'min_rating' => 'nullable|numeric|between:0,5',
-            'lat'        => 'nullable|numeric|between:-90,90',
-            'lng'        => 'nullable|numeric|between:-180,180',
-            'radius'     => 'nullable|numeric|min:1|max:200',
-            'per_page'   => 'nullable|integer|min:1|max:20',
-            'sort_by'    => 'nullable|in:created_at,rating,reviews,distance',
+            'lat' => 'nullable|numeric|between:-90,90',
+            'lng' => 'nullable|numeric|between:-180,180',
+            'radius' => 'nullable|numeric|min:1|max:200',
+            'per_page' => 'nullable|integer|min:1|max:20',
+            'sort_by' => 'nullable|in:created_at,rating,reviews,distance',
             'sort_order' => 'nullable|in:asc,desc',
         ]);
 
         $params = $request->only([
-            'query','type','verified','min_rating',
-            'lat','lng','radius',
-            'sort_by','sort_order','per_page','page',
+            'query',
+            'type',
+            'verified',
+            'min_rating',
+            'lat',
+            'lng',
+            'radius',
+            'sort_by',
+            'sort_order',
+            'per_page',
+            'page',
         ]);
 
         $results = CacheService::rememberSearchResults('biz', $params, function () use ($request) {
 
-            $hasGeo   = $request->filled('lat') && $request->filled('lng');
+            $hasGeo = $request->filled('lat') && $request->filled('lng');
             $hasQuery = $request->filled('query');
 
-        
             $query = BusinessProfile::query()
                 ->select([
                     'business_profiles.id',
@@ -315,7 +349,6 @@ class SearchController extends Controller
                 ])
                 ->where('business_profiles.is_verified', '!=', false); // only show active businesses
 
-   
             if ($hasQuery) {
                 $term = trim((string) $request->input('query'));
                 if (strlen($term) >= 3) {
@@ -330,7 +363,6 @@ class SearchController extends Controller
                 }
             }
 
-           
             if ($request->filled('type')) {
                 $query->where('business_profiles.business_type', $request->type);
             }
@@ -343,17 +375,20 @@ class SearchController extends Controller
                 $query->where('business_profiles.average_rating', '>=', (float) $request->min_rating);
             }
 
-           
             if ($hasGeo) {
-                $lat    = (float) $request->lat;
-                $lng    = (float) $request->lng;
+                $lat = (float) $request->lat;
+                $lng = (float) $request->lng;
                 $radius = (float) $request->input('radius', 10);
 
                 $query
-                    ->join('business_locations as bl_geo',
-                        'bl_geo.business_profile_id', '=', 'business_profiles.id')
+                    ->join(
+                        'business_locations as bl_geo',
+                        'bl_geo.business_profile_id',
+                        '=',
+                        'business_profiles.id'
+                    )
                     ->where('bl_geo.is_active', true)
-                    ->where('bl_geo.is_primary', true) 
+                    ->where('bl_geo.is_primary', true)
                     ->addSelect(DB::raw(
                         '(6371 * acos(
                             cos(radians(?)) * cos(radians(bl_geo.latitude))
@@ -365,17 +400,16 @@ class SearchController extends Controller
                     ->having('distance', '<=', $radius);
             }
 
-            
             $sortOrder = $request->input('sort_order', 'desc') === 'asc' ? 'asc' : 'desc';
-            $sortBy    = $request->input('sort_by', 'created_at');
+            $sortBy = $request->input('sort_by', 'created_at');
 
             match ($sortBy) {
-                'rating'   => $query->orderBy('business_profiles.average_rating', $sortOrder),
-                'reviews'  => $query->orderBy('business_profiles.total_reviews', $sortOrder),
+                'rating' => $query->orderBy('business_profiles.average_rating', $sortOrder),
+                'reviews' => $query->orderBy('business_profiles.total_reviews', $sortOrder),
                 'distance' => $hasGeo
-                                ? $query->orderBy('distance', $sortOrder)
-                                : $query->orderBy('business_profiles.created_at', 'desc'),
-                default    => $query->orderBy('business_profiles.created_at', $sortOrder),
+                    ? $query->orderBy('distance', $sortOrder)
+                    : $query->orderBy('business_profiles.created_at', 'desc'),
+                default => $query->orderBy('business_profiles.created_at', $sortOrder),
             };
 
             return $query->paginate((int) $request->input('per_page', 15));
@@ -384,18 +418,17 @@ class SearchController extends Controller
         return $this->paginatedResponse(BusinessProfileResource::collection($results), $results);
     }
 
-    
     private function paginatedResponse(mixed $collection, mixed $paginator): JsonResponse
     {
         return response()->json([
             'success' => true,
-            'data'    => $collection,
-            'meta'    => [
+            'data' => $collection,
+            'meta' => [
                 'pagination' => [
                     'current_page' => $paginator->currentPage(),
-                    'per_page'     => $paginator->perPage(),
-                    'total'        => $paginator->total(),
-                    'total_pages'  => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'total_pages' => $paginator->lastPage(),
                 ],
             ],
         ]);
