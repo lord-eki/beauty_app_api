@@ -6,6 +6,7 @@ use App\Http\Resources\ReviewResource;
 use App\Models\BusinessProfile;
 use App\Models\Review;
 use App\Services\CacheService;
+use App\Support\Media;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -21,9 +22,9 @@ class ReviewController extends Controller
     {
         $reviews = $businessProfile->reviews()
             ->with('user:id,first_name,last_name,profile_image')
-            ->when($request->filled('rating'), fn ($q) => $q->where('rating', $request->rating))
-            ->when($request->filled('service_id'), fn ($q) => $q->where('service_id', $request->service_id))
-            ->when($request->filled('product_id'), fn ($q) => $q->where('product_id', $request->product_id))
+            ->when($request->filled('rating'), fn($q) => $q->where('rating', $request->rating))
+            ->when($request->filled('service_id'), fn($q) => $q->where('service_id', $request->service_id))
+            ->when($request->filled('product_id'), fn($q) => $q->where('product_id', $request->product_id))
             ->latest()
             ->paginate($request->input('per_page', 15));
 
@@ -64,13 +65,13 @@ class ReviewController extends Controller
             ->where('business_profile_id', $data['business_profile_id'])
             ->when(
                 isset($data['service_id']),
-                fn ($q) => $q->where('service_id', $data['service_id']),
-                fn ($q) => $q->whereNull('service_id')
+                fn($q) => $q->where('service_id', $data['service_id']),
+                fn($q) => $q->whereNull('service_id')
             )
             ->when(
                 isset($data['product_id']),
-                fn ($q) => $q->where('product_id', $data['product_id']),
-                fn ($q) => $q->whereNull('product_id')
+                fn($q) => $q->where('product_id', $data['product_id']),
+                fn($q) => $q->whereNull('product_id')
             )
             ->exists();
 
@@ -85,8 +86,7 @@ class ReviewController extends Controller
         $imagePaths = [];
         if ($request->hasFile('images')) {
             foreach ($request->file('images') as $image) {
-                $filename = 'reviews/'.Str::uuid().'.'.$image->getClientOriginalExtension();
-                $imagePaths[] = $image->storeAs('', $filename, 'public');
+                $imagePaths[] = Media::store($image, 'reviews');
             }
         }
 
@@ -149,11 +149,7 @@ class ReviewController extends Controller
 
         $businessProfileId = $review->business_profile_id;
 
-        if ($review->images) {
-            foreach ($review->images as $image) {
-                Storage::disk('public')->delete($image);
-            }
-        }
+        Media::delete($review->images);
 
         $review->delete();
 

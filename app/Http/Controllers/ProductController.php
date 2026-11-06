@@ -6,6 +6,7 @@ use App\Http\Requests\StoreProductRequest;
 use App\Http\Requests\UpdateProductRequest;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
+use App\Support\Media;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -132,7 +133,7 @@ class ProductController extends Controller
         // Delete all images from storage
         if ($product->images) {
             foreach ($product->images as $image) {
-                Storage::disk('public')->delete($image);
+                Media::delete($product->images);
             }
         }
 
@@ -165,9 +166,7 @@ class ProductController extends Controller
         $images = $product->images ?? [];
 
         foreach ($request->file('images') as $image) {
-            $filename = 'products/' . Str::uuid() . '.' . $image->getClientOriginalExtension();
-            $path     = $image->storeAs('', $filename, 'public');
-            $images[] = $path;
+            $images[] = Media::store($image, 'products');
         }
 
         $product->update(['images' => $images]);
@@ -201,7 +200,8 @@ class ProductController extends Controller
             ], 404);
         }
 
-        Storage::disk('public')->delete($images[$imageIndex]);
+        Media::delete($images[$imageIndex]);
+        
         unset($images[$imageIndex]);
         $images = array_values($images);
 

@@ -11,6 +11,7 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use App\Models\ChatMessage;
 use App\Models\ChatConversation;
+use App\Support\Media;
 
 class NewChatMessage implements ShouldBroadcast
 {
@@ -53,11 +54,11 @@ class NewChatMessage implements ShouldBroadcast
             'sender'          => [
                 'id'            => $sender?->id,
                 'name'          => trim(($sender?->first_name ?? '') . ' ' . ($sender?->last_name ?? '')),
-                'profile_image' => $sender?->profile_image,
+                'profile_image' => Media::url($sender?->profile_image),
             ],
             'message_type'    => $this->message->message_type,
             'content'         => $this->message->content,
-            'file_url'        => $this->message->file_url,
+            'file_url'        => Media::url($this->message->file_url),
             'file_name'       => $this->message->file_name,
             'is_read'         => false,
             'created_at'      => $this->message->created_at?->toIso8601String(),

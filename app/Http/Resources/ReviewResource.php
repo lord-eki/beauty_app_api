@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\Media;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -13,9 +14,7 @@ class ReviewResource extends JsonResource
             'id'          => $this->id,
             'rating'      => $this->rating,
             'comment'     => $this->comment,
-            'images'      => collect($this->images ?? [])
-                ->map(fn($img) => asset('storage/' . $img))
-                ->values(),
+            'images'      => Media::urls($this->images),
             'is_verified' => $this->is_verified,
             'service_id'  => $this->service_id,
             'product_id'  => $this->product_id,
@@ -26,9 +25,7 @@ class ReviewResource extends JsonResource
                 'id'            => $this->user->id,
                 'first_name'    => $this->user->first_name,
                 'last_name'     => $this->user->last_name,
-                'profile_image' => $this->user->profile_image
-                    ? asset('storage/' . $this->user->profile_image)
-                    : null,
+                'profile_image' => Media::url($this->user->profile_image),
             ]),
 
             'service' => $this->whenLoaded('service', fn() => [

@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\Media;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -18,7 +19,7 @@ class ServiceResource extends JsonResource
             'price_max' => $this->price_max ? (float) $this->price_max : null,
             'business_profile_id' => $this->business_profile_id,
             'duration_minutes' => $this->duration_minutes,
-            'images' => $this->images ? array_map(fn($img) => asset('storage/' . $img), $this->images) : [],
+            'images' => Media::urls($this->images),
             'is_home_service' => $this->is_home_service,
             'is_active' => $this->is_active,
             'is_boosted' => (bool)($this->resource->getAttributes()['is_boosted'] ?? false),

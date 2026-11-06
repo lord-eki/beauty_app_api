@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateProfileImageRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Support\Media;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -64,8 +65,8 @@ class UserController extends Controller
 
         $user->fill($request->validated());
 
-        if($user->isDirty('phone')) $user->phone_verified_at = null;
-        if($user->isDirty('email')) $user->email_verified_at = null;
+        if ($user->isDirty('phone')) $user->phone_verified_at = null;
+        if ($user->isDirty('email')) $user->email_verified_at = null;
 
         $user->save();
 
@@ -88,24 +89,18 @@ class UserController extends Controller
     {
         $user = $request->user();
 
-        // Delete old profile image if exists
-        if ($user->profile_image) {
-            Storage::disk('public')->delete($user->profile_image);
-        }
+        Media::delete($user->profile_image);
 
-        // Store new image
-        $image = $request->file('profile_image');
-        $filename = 'avatars/'.Str::uuid().'.'.$image->getClientOriginalExtension();
-        $path = $image->storeAs('', $filename, 'public');
+        $path =  Media::store($request->file('profile_image'), 'avatars');
 
-        // Update user record
         $user->update(['profile_image' => $path]);
+
 
         return response()->json([
             'success' => true,
             'message' => 'Profile image uploaded successfully',
             'data' => [
-                'profile_image' => asset('storage/'.$path),
+                'profile_image' => Media::url($path),
                 'user' => new UserResource($user->fresh()),
             ],
         ], 200);
@@ -122,10 +117,8 @@ class UserController extends Controller
             ], 404);
         }
 
-        // Delete image from storage
-        Storage::disk('public')->delete($user->profile_image);
-
-        // Update user record
+        Media::delete($user->profile_image);
+        
         $user->update(['profile_image' => null]);
 
         return response()->json([

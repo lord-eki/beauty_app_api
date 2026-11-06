@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateServicesRequest;
 use App\Http\Requests\UploadServiceImagesRequest;
 use App\Models\Service;
 use App\Http\Resources\ServiceResource;
+use App\Support\Media;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -136,9 +137,7 @@ class ServicesController extends Controller
 
         // Delete all images
         if ($service->images) {
-            foreach ($service->images as $image) {
-                Storage::disk('public')->delete($image);
-            }
+            Media::delete($service->images);
         }
 
         $service->delete();
@@ -165,9 +164,7 @@ class ServicesController extends Controller
         $images = $service->images ?? [];
 
         foreach ($request->file('images') as $image) {
-            $filename = 'services/' . Str::uuid() . '.' . $image->getClientOriginalExtension();
-            $path = $image->storeAs('', $filename, 'public');
-            $images[] = $path;
+            $images[] = Media::store($image, 'services');
         }
 
         $service->update(['images' => $images]);
@@ -176,7 +173,7 @@ class ServicesController extends Controller
             'success' => true,
             'message' => 'Images uploaded successfully',
             'data' => [
-                'images' => array_map(fn($img) => asset('storage/' . $img), $images),
+                'images' => Media::url($images),
                 'service' => new ServiceResource($service->fresh('category')),
             ],
         ], 200);
@@ -205,11 +202,11 @@ class ServicesController extends Controller
         }
 
         // Delete from storage
-        Storage::disk('public')->delete($images[$imageIndex]);
+        Media::delete($images[$imageIndex]);
 
         // Remove from array
         unset($images[$imageIndex]);
-        $images = array_values($images); // Re-index array
+        $images = array_values($images); 
 
         $service->update(['images' => $images]);
 

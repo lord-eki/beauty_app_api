@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\Media;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -22,7 +23,7 @@ class UserResource extends JsonResource
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
             'full_name' => $this->first_name . ' ' . $this->last_name,
-            'profile_image' => $this->profile_image ? asset('storage/' . $this->profile_image) : null,
+            'profile_image' => Media::url($this->profile_image),
             'user_type' => $this->user_type,
             'is_active' => $this->is_active,
             'email_verified' => !is_null($this->email_verified_at),

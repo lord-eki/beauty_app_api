@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\Media;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -28,9 +29,7 @@ class InventoryResource extends JsonResource
                 'discounted_price' => $this->product->discounted_price !== null
                     ? (float) $this->product->discounted_price
                     : null,
-                'images' => $this->product->images
-                    ? array_map(fn ($img) => asset('storage/' . $img), $this->product->images)
-                    : [],
+                'images' => Media::urls($this->product->images),
                 'is_active' => $this->product->is_active,
             ]),
 

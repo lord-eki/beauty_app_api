@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\Media;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -22,7 +23,7 @@ class ProductResource extends JsonResource
             'discount_percentage' => $this->getDiscountPercentage(),
             'stock_quantity' => $this->stock_quantity,
             'sku' => $this->sku,
-            'images' => $this->images ? array_map(fn($img) => asset('storage/' . $img), $this->images) : [],
+            'images' => Media::urls($this->images),
             'specifications' => $this->specifications,
             'is_active' => $this->is_active,
             'is_boosted' => (bool)($this->resource->getAttributes()['is_boosted'] ?? false),

@@ -10,6 +10,7 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use App\Models\User;
+use App\Support\Media;
 
 class UserOnlineStatus implements ShouldBroadcast
 {
@@ -38,7 +39,7 @@ class UserOnlineStatus implements ShouldBroadcast
         return [
             'user_id'         => $this->user->id,
             'name'            => trim($this->user->first_name . ' ' . $this->user->last_name),
-            'profile_image'   => $this->user->profile_image,
+            'profile_image'   => Media::url($this->user->profile_image),
             'status'          => $this->status,
             'conversation_id' => $this->conversationId,
         ];

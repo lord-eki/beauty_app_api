@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\Media;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -53,7 +54,7 @@ class OrderResource extends JsonResource
                     'id'              => $item->id,
                     'product_id'      => $item->product_id,
                     'product_name'    => $item->product?->name ?? 'Product',
-                    'thumbnail_url'   => $first ? asset('storage/' . $first) : null,
+                    'thumbnail_url'   => Media::url($first),
                     'quantity'        => (int) $item->quantity,
                     'unit_price'      => (float) $item->unit_price,
                     'discount_amount' => (float) $item->discount_amount,
