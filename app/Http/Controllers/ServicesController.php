@@ -10,6 +10,7 @@ use App\Http\Resources\ServiceResource;
 use App\Support\Media;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -105,8 +106,7 @@ class ServicesController extends Controller
      */
     public function update(UpdateServicesRequest $request, Service $service): JsonResponse
     {
-        // Ensure the service belongs to the authenticated user's business
-        if ($service->business_profile_id !== $request->user()->businessProfile->id) {
+        if ($service->business_profile_id !== $request->user()->businessProfile?->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',
@@ -127,15 +127,13 @@ class ServicesController extends Controller
      */
     public function destroy(Request $request, Service $service): JsonResponse
     {
-        // Ensure the service belongs to the authenticated user's business
-        if ($service->business_profile_id !== $request->user()->businessProfile->id) {
+        if ($service->business_profile_id !== $request->user()->businessProfile?->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized',
             ], 403);
         }
 
-        // Delete all images
         if ($service->images) {
             Media::delete($service->images);
         }
@@ -151,40 +149,49 @@ class ServicesController extends Controller
     /**
      * Upload service images
      */
-    public function uploadImages(UploadServiceImagesRequest $request, Service $service): JsonResponse
-    {
-        // Ensure the service belongs to the authenticated user's business
-        if ($service->business_profile_id !== $request->user()->businessProfile->id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized',
-            ], 403);
-        }
-
-        $images = $service->images ?? [];
-
-        foreach ($request->file('images') as $image) {
-            $images[] = Media::store($image, 'services');
-        }
-
-        $service->update(['images' => $images]);
-
+  public function uploadImages(UploadServiceImagesRequest $request, Service $service): JsonResponse
+{
+    if ($service->business_profile_id !== $request->user()->businessProfile?->id) {
         return response()->json([
-            'success' => true,
-            'message' => 'Images uploaded successfully',
-            'data' => [
-                'images' => Media::url($images),
-                'service' => new ServiceResource($service->fresh('category')),
-            ],
-        ], 200);
+            'success' => false,
+            'message' => 'Unauthorized',
+        ], 403);
     }
+
+    $newPaths = [];
+    foreach ($request->file('images') as $image) {
+        $newPaths[] = Media::store($image, 'services');
+    }
+
+    try {
+        $images = DB::transaction(function () use ($service, $newPaths) {
+            $locked = Service::whereKey($service->id)->lockForUpdate()->firstOrFail();
+
+            $merged = array_merge($locked->images ?? [], $newPaths);
+            $locked->update(['images' => $merged]);
+
+            return $merged;
+        });
+    } catch (\Throwable $e) {
+        Media::delete($newPaths);
+        throw $e;
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Images uploaded successfully',
+        'data' => [
+            'images' => Media::urls($images),
+            'service' => new ServiceResource($service->fresh('category')),
+        ],
+    ], 200);
+}
 
     /**
      * Delete a specific image
      */
     public function deleteImage(Request $request, Service $service, $imageIndex): JsonResponse
     {
-        // Ensure the service belongs to the authenticated user's business
         if ($service->business_profile_id !== $request->user()->businessProfile->id) {
             return response()->json([
                 'success' => false,
@@ -201,10 +208,8 @@ class ServicesController extends Controller
             ], 404);
         }
 
-        // Delete from storage
         Media::delete($images[$imageIndex]);
 
-        // Remove from array
         unset($images[$imageIndex]);
         $images = array_values($images); 
 
@@ -213,7 +218,7 @@ class ServicesController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Image deleted successfully',
-            'data' => new ServiceResource($service->fresh()),
+            'data' => new ServiceResource($service->fresh('category')),
         ], 200);
     }
 }
